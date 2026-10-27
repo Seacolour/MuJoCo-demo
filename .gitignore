@@ -1,0 +1,10 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+.venv/
+.idea/
+.codex/
