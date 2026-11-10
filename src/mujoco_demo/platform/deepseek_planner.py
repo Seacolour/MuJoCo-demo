@@ -54,22 +54,32 @@ class DeepSeekPlanner:
     def parse_plan(self, instruction: str, scene: dict[str, object]) -> TaskPlan:
         system_prompt = (
             "你是机械臂任务规划器。只返回 JSON 对象，不输出解释或代码。"
-            "把用户的每个搬运要求拆成一个按原文顺序排列的 pick_place 工具调用；不得遗漏步骤。"
-            "最多四步。合法格式示例："
+            "识别用户要求的每个方块及其目标区域，按原文顺序输出；不得遗漏方块。"
+            "若两个方块当前占据彼此的目标区域，仍输出两个目标，平台会用空闲区域安排临时搬运。"
+            "若用户要求交换两个方块的位置，根据当前场景中的占用关系确定双方目标。"
+            "不要因为目标当前被另一个待移动方块占用而拒绝，也不要自行生成临时搬运。"
+            "最多四个要求。合法格式示例："
             '{"steps":[{"object_name":"green_cube","target_name":"red_zone"},'
             '{"object_name":"red_cube","target_name":"green_zone"}]}。'
             '如果无法确定所有步骤，返回 {"error":"unsupported_task"}。'
             "只选择场景中提供的物体和区域 ID；不要生成坐标、关节角或控制代码。"
             f"当前场景 JSON：{json.dumps(scene, ensure_ascii=False)}"
         )
-        parsed = self._complete_json(instruction, system_prompt, max_tokens=512)
+        parsed = self._complete_json(instruction, system_prompt, max_tokens=1024)
         try:
             plan = TaskPlan.model_validate(parsed)
         except ValidationError as exc:
             raise ValueError("任务规划格式不符合要求，最多支持四步") from exc
         explicit_moves = len(re.findall(r"(?:把|将)(?:红色|绿色)", instruction))
-        if (re.search(r"然后|接着|随后|再把|再将|并且", instruction)
-                or explicit_moves > 1) and len(plan.steps) < 2:
+        mentioned_objects = {
+            name for name, info in scene["objects"].items()
+            if isinstance(info.get("label"), str) and info["label"] in instruction
+        }
+        planned_objects = {step.object_name for step in plan.steps}
+        requires_multiple = bool(re.search(r"然后|接着|随后|再把|再将|并且", instruction))
+        incomplete_sequence = (requires_multiple or explicit_moves > 1) and len(plan.steps) < 2
+        missing_objects = len(mentioned_objects) > 1 and not mentioned_objects <= planned_objects
+        if incomplete_sequence or missing_objects:
             raise ValueError("多步骤指令未完整解析，未执行机械臂动作")
         for step in plan.steps:
             if step.object_name not in scene["objects"] or step.target_name not in scene["zones"]:
@@ -87,23 +97,27 @@ class DeepSeekPlanner:
             "max_tokens": max_tokens,
             "stream": False,
         }
-        http_request = request.Request(
-            DEEPSEEK_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         parsed = None
-        for _attempt in range(2):
+        finish_reason = None
+        for attempt in range(2):
+            payload["max_tokens"] = max_tokens * (attempt + 1)
+            http_request = request.Request(
+                DEEPSEEK_URL,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
             try:
                 with request.urlopen(http_request, timeout=30) as response:
                     body = json.load(response)
             except error.HTTPError as exc:
                 raise RuntimeError(f"DeepSeek request failed with HTTP {exc.code}") from exc
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            finish_reason = choice.get("finish_reason")
+            content = choice["message"]["content"]
             if not content or not content.strip():
                 continue
             try:
@@ -112,7 +126,8 @@ class DeepSeekPlanner:
             except json.JSONDecodeError:
                 continue
         if parsed is None:
-            raise ValueError("DeepSeek 未能返回完整的任务，请重试")
+            detail = "（输出达到长度限制）" if finish_reason == "length" else ""
+            raise ValueError(f"DeepSeek 未返回有效的任务 JSON{detail}，请重试")
         if "error" in parsed:
             reason = str(parsed["error"])
             messages = {

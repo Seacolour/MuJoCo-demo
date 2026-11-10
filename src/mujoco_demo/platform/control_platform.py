@@ -16,6 +16,7 @@ from rclpy.executors import SingleThreadedExecutor
 import uvicorn
 
 from mujoco_demo.platform.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.platform.goal_planner import expand_goal_plan
 from mujoco_demo.platform.ros_skill_client import RosSkillClient
 from mujoco_demo.shared.task_plan import TaskPlan, validate_plan
 from mujoco_demo.shared.ros_contracts import TaskEvent
@@ -138,7 +139,8 @@ class AgentControlPlatform:
                 if scene is None:
                     raise RuntimeError("MuJoCo scene is unavailable; start the multi-scene bridge")
                 instruction = str(self._task_snapshot(request_id)["instruction"])
-                plan = DeepSeekPlanner().parse_plan(instruction, scene)
+                requested = DeepSeekPlanner().parse_plan(instruction, scene)
+                plan = expand_goal_plan(scene, requested)
                 validate_plan(scene, plan)
                 with self._lock:
                     if self._tasks[request_id]["status"] == "cancelled":

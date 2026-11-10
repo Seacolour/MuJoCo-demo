@@ -55,6 +55,21 @@ def test_compound_instruction_rejects_a_truncated_one_step_plan(
         )
 
 
+def test_two_named_objects_are_required_even_without_a_then_word(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mujoco_demo.deepseek_planner.request.urlopen",
+        lambda *_args, **_kwargs: model_response({"steps": [
+            {"object_name": "red_cube", "target_name": "red_zone"},
+        ]}),
+    )
+    with pytest.raises(ValueError, match="未完整解析"):
+        DeepSeekPlanner(api_key="test-key").parse_plan(
+            "把红色方块放到红色区域，绿色方块放到绿色区域", SCENE
+        )
+
+
 def test_plan_rejects_a_later_occupied_target_before_any_motion() -> None:
     plan = TaskPlan(steps=(
         PickPlaceTask(object_name="red_cube", target_name="blue_zone"),

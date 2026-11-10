@@ -42,9 +42,15 @@ def main() -> None:
             PickPlaceTask(object_name="green_cube", target_name="red_zone"),
             PickPlaceTask(object_name="red_cube", target_name="green_zone"),
         ))
+        swap = TaskPlan(steps=(
+            PickPlaceTask(object_name="red_cube", target_name="red_zone"),
+            PickPlaceTask(object_name="green_cube", target_name="green_zone"),
+        ))
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}), patch.object(
             DeepSeekPlanner, "parse_plan",
-            side_effect=lambda instruction, _scene: invalid if instruction == "invalid" else valid,
+            side_effect=lambda instruction, _scene: {
+                "invalid": invalid, "valid": valid, "swap": swap,
+            }[instruction],
         ):
             rejected = wait_for_task(platform, bridge, platform.submit("invalid")["request_id"])
             assert rejected["status"] == "rejected", rejected
@@ -55,6 +61,16 @@ def main() -> None:
             assert completed["total_steps"] == 2
             assert len(completed["result"]["steps"]) == 2
             assert bridge.scene_revision == 2
+
+            exchanged = wait_for_task(platform, bridge, platform.submit("swap")["request_id"])
+            assert exchanged["status"] == "succeeded", exchanged
+            assert exchanged["total_steps"] == 3
+            assert len(exchanged["result"]["steps"]) == 3
+            assert bridge.scene_revision == 5
+            scene = bridge.simulation.catalog.snapshot(bridge.simulation.data)
+            assert scene["zones"]["red_zone"]["occupied_by"] == "red_cube"
+            assert scene["zones"]["green_zone"]["occupied_by"] == "green_cube"
+            assert scene["zones"]["blue_zone"]["occupied_by"] is None
         print("ROS 2 compound task orchestration OK")
     finally:
         platform.stop()
