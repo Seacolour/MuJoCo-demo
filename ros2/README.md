@@ -14,4 +14,6 @@ pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py --offline
 
 The xArm7 task bridge publishes JSON task events on `/mujoco_demo/task_event`, accepts JSON task commands on `/mujoco_demo/task_command`, cancellation requests on `/mujoco_demo/task_cancel`, and publishes `sensor_msgs/JointState` on `/mujoco_demo/joint_states`. It accepts one active task and queues up to eight more. This is a Topic-based prototype; it does not yet expose a ROS 2 Action interface.
 
+Add `--viewer` to the `bridge_node.py` command to watch one ROS-triggered task in real time. The viewer stays open after the result and the bridge exits when the viewer is closed. Without `--viewer`, the bridge runs headless and can process a queue of tasks.
+
 Use `pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"` instead of `--offline` to parse the instruction with DeepSeek. The agent reads `DEEPSEEK_API_KEY` from the process environment or the project root `.env` file.

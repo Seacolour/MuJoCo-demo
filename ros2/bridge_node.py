@@ -6,6 +6,7 @@ from collections import deque
 import threading
 import time
 
+import mujoco.viewer
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
@@ -24,8 +25,9 @@ from mujoco_demo.ros_contracts import (
 
 
 class MuJoCoBridge(Node):
-    def __init__(self) -> None:
+    def __init__(self, *, show_viewer: bool = False) -> None:
         super().__init__("mujoco_pick_place_bridge")
+        self.show_viewer = show_viewer
         self._events = self.create_publisher(String, EVENT_TOPIC, 10)
         self._joint_states = self.create_publisher(JointState, JOINT_STATE_TOPIC, 10)
         self.create_subscription(String, COMMAND_TOPIC, self._on_command, 10)
@@ -105,17 +107,35 @@ class MuJoCoBridge(Node):
             self._joint_states.publish(state)
 
         try:
-            result = PickPlaceSimulation(
+            simulation = PickPlaceSimulation(
                 on_phase=report_phase, should_cancel=cancel.is_set
-            ).run(command.task)
-            self._publish(
-                TaskEvent(
-                    request_id=command.request_id,
-                    status="cancelled" if result.cancelled else "completed" if result.success else "failed",
-                    message=result.failure_reason,
-                    result=asdict(result),
-                )
             )
+
+            def run_and_publish() -> None:
+                result = simulation.run(command.task)
+                self._publish(
+                    TaskEvent(
+                        request_id=command.request_id,
+                        status="cancelled" if result.cancelled else "completed" if result.success else "failed",
+                        message=result.failure_reason,
+                        result=asdict(result),
+                    )
+                )
+
+            if self.show_viewer:
+                with mujoco.viewer.launch_passive(simulation.model, simulation.data) as viewer:
+                    simulation.viewer = viewer
+                    viewer.cam.lookat[:] = [0.35, 0, 0.45]
+                    viewer.cam.distance = 1.2
+                    viewer.cam.azimuth = 145
+                    viewer.cam.elevation = -25
+                    run_and_publish()
+                    print("Task finished. Close the MuJoCo viewer to stop the bridge.", flush=True)
+                    while viewer.is_running():
+                        viewer.sync()
+                        time.sleep(1 / 60)
+            else:
+                run_and_publish()
         except Exception as exc:
             self._publish(TaskEvent(request_id=command.request_id, status="failed", message=str(exc)))
         finally:
@@ -132,13 +152,14 @@ class MuJoCoBridge(Node):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="exit after one completed task")
+    parser.add_argument("--viewer", action="store_true", help="show one task in the MuJoCo viewer")
     args = parser.parse_args()
     rclpy.init()
-    node = MuJoCoBridge()
+    node = MuJoCoBridge(show_viewer=args.viewer)
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.1)
-            if (args.once and node.completed_at is not None and node._active_id is None
+            if ((args.once or args.viewer) and node.completed_at is not None and node._active_id is None
                     and time.monotonic() - node.completed_at > 1):
                 break
     except KeyboardInterrupt:

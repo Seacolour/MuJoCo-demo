@@ -26,12 +26,14 @@ pixi run test
 
 无界面运行返回结构化阶段记录，并在 `artifacts/` 生成截图。`--viewer` 会以实时速度显示动作，关闭窗口后退出。
 
-ROS 2 使用独立的 Pixi 环境。先在终端 A 启动桥接节点，再在终端 B 发送离线任务：
+ROS 2 使用独立的 Pixi 环境。桥接节点默认无界面。先在终端 A 启动，再在终端 B 发送离线任务：
 
 ```powershell
 pixi run --manifest-path ros2/pixi.toml python ros2/bridge_node.py
 pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py --offline
 ```
+
+若要观看完整的 Agent → ROS 2 → MuJoCo 动作，在终端 A 的桥接命令末尾加 `--viewer`。收到任务后会打开 MuJoCo 窗口，按仿真时间显示抓取和放置；任务结束后关闭窗口即可退出该桥接进程。
 
 真实自然语言解析从项目根目录的 `.env` 或进程环境读取 `DEEPSEEK_API_KEY`：
 
