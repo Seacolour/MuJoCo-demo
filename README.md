@@ -43,7 +43,7 @@ pixi run --manifest-path ros2/pixi.toml smoke-multi
 pixi run --manifest-path ros2/pixi.toml smoke-plan
 ```
 
-项目扩展顺序与剩余工作见 [多物体机械臂 Agent 遥控平台实施计划](docs/multi-object-control-platform-plan.md)。
+后续架构路线见 [Agent 平台与机器人运行时拆分计划](docs/agent-platform-robot-runtime-plan.md)；已完成的多物体阶段记录在 [多物体机械臂 Agent 遥控平台实施计划](docs/multi-object-control-platform-plan.md)。
 
 ## 当前边界
 
