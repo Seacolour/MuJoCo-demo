@@ -30,6 +30,16 @@ pixi run --manifest-path ros2/pixi.toml python ros2/control_platform.py
 
 浏览器访问 `http://127.0.0.1:8765`。可以依次发送两条单任务，也可以一次输入“先把绿色方块放到红色区域，然后把红色方块放到绿色区域”。后一步会读取前一步完成后的场景；若后续步骤的目标被占用，整条计划会在机械臂动作前被拒绝。关闭两个终端即可停止服务。
 
+## 代码模块
+
+| 模块 | 主要职责 |
+| --- | --- |
+| `src/mujoco_demo/platform/` | DeepSeek 规划、父任务调度、HTTP/SSE 遥控台和 ROS 2 技能客户端 |
+| `src/mujoco_demo/robot_runtime/` | 持续运行的 MuJoCo 场景、运动执行、物理验收和 ROS 2 桥接 |
+| `src/mujoco_demo/shared/` | 计划、单步任务和 Topic 消息契约 |
+
+上述两个运行模块可分别通过 `python -m mujoco_demo.robot_runtime.bridge_node --multi --viewer` 和 `python -m mujoco_demo.platform.control_platform` 启动，需在 ROS 2 Pixi 环境内执行。前面的 `ros2/*.py` 启动命令继续可用。当前传输仍为 Topic；Action 迁移见后续计划。
+
 ## 命令行与验收
 
 ```powershell

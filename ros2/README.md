@@ -2,6 +2,8 @@
 
 This separate Pixi workspace contains ROS 2 Jazzy `ros-base`, `xacro`, and an editable installation of the root MuJoCo demo package.
 
+The application code now lives in `mujoco_demo.platform`, `mujoco_demo.robot_runtime`, and `mujoco_demo.shared`. The scripts in this directory remain compatibility entry points. Both runtime modules currently use this same Pixi environment.
+
 From the project root:
 
 ```powershell

@@ -37,6 +37,8 @@ Agent 平台进程
 
 ### 阶段 0：冻结当前可运行基线
 
+状态：已完成。拆分前记录了 21 个 Python 测试通过，`smoke-multi` 与 `smoke-plan` 均通过。
+
 - 保留单方块基线、双物体六种组合、两步复合指令、冲突整单拒绝和取消用例。
 - 记录 `pixi run test`、`pixi run --manifest-path ros2/pixi.toml smoke-multi` 和 `smoke-plan` 的结果。模块迁移时先保证行为与界面结果一致。
 
@@ -44,10 +46,14 @@ Agent 平台进程
 
 ### 阶段 1：在同仓库整理模块
 
+状态：代码边界已整理，浏览器操作待手动复核。平台、机器人运行时与共享契约已归入独立 Python 包；原有脚本保留兼容入口。拆分后 21 个 Python 测试与两步 ROS 2 任务检查通过。
+
 - 将 `ros2/control_platform.py` 中的 HTTP 服务、Planner 与 Task Runtime 整理到 `platform/`；ROS 2 客户端保留为窄适配层。
 - 将 `ros2/bridge_node.py`、`pick_place.py`、IK 与场景目录整理到 `robot_runtime/`；只有这一侧修改 MuJoCo 物理状态。
 - 将 `TaskPlan`、技能输入输出与场景快照约定放入共享契约目录。依赖方向为“平台／机器人运行时 → 共享契约”，不出现反向导入。
 - 保持两个启动命令和现有 UI 可用；先做纯目录与导入边界调整，不改任务语义。
+
+当前包路径为 `mujoco_demo.platform`、`mujoco_demo.robot_runtime`、`mujoco_demo.shared`。平台的 ROS 2 Topic 收发集中在 `platform/ros_skill_client.py`，任务调度不直接操作 Topic 消息；机器人运行时只依赖共享契约。两个进程目前仍共用 `ros2/pixi.toml` 环境，依赖安装暂未拆开。
 
 完成条件：现有物理测试、ROS 2 连续任务检查和浏览器两步指令仍通过。
 

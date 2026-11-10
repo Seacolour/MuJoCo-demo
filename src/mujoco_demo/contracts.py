@@ -1,12 +1,5 @@
-"""Validated input contract between the language planner and task executor."""
+"""Compatibility import; new code should use mujoco_demo.shared.contracts."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from mujoco_demo.shared.contracts import PickPlaceTask
 
-
-class PickPlaceTask(BaseModel):
-    """A high-level request; scene resolution and motion remain deterministic."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    object_name: str = Field(min_length=1)
-    target_name: str = Field(min_length=1)
+__all__ = ["PickPlaceTask"]

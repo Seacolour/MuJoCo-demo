@@ -9,8 +9,8 @@ import mujoco
 import mujoco.viewer
 from PIL import Image
 
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.pick_place import PickPlaceSimulation
+from mujoco_demo.shared.contracts import PickPlaceTask
+from mujoco_demo.robot_runtime.pick_place import PickPlaceSimulation
 
 
 def save_snapshot(simulation: PickPlaceSimulation, path: Path) -> None:
