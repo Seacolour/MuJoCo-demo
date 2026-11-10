@@ -8,3 +8,5 @@ __pycache__/
 .venv/
 .idea/
 .codex/
+MUJOCO_LOG.TXT
+artifacts/

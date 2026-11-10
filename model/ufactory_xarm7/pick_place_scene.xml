@@ -1,0 +1,26 @@
+<mujoco model="xarm7 pick and place">
+  <include file="xarm7.xml"/>
+
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <global azimuth="145" elevation="-25" offwidth="960" offheight="720"/>
+  </visual>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="0 0 0.05" rgba="0.25 0.35 0.45 1"/>
+
+    <geom name="work_table" type="box" pos="0.35 0 0.285" size="0.19 0.11 0.025"
+          rgba="0.45 0.47 0.5 1" friction="1 0.005 0.0001"/>
+    <site name="target_zone" pos="0.25 0 0.312" size="0.055 0.055 0.001" type="box"
+          rgba="0.1 0.8 0.25 0.45"/>
+
+    <body name="red_cube" pos="0.45 0 0.333">
+      <freejoint name="red_cube_free"/>
+      <geom name="red_cube_geom" type="box" size="0.022 0.022 0.022" mass="0.055"
+            rgba="0.9 0.1 0.08 1" friction="1.2 0.005 0.0001"/>
+    </body>
+  </worldbody>
+</mujoco>

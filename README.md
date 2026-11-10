@@ -1,27 +1,51 @@
-# MuJoCo Agent Demo
+# MuJoCo xArm7 Agent Demo
 
-一个独立于 PaperPuppy 的 Windows 原生机械臂仿真项目。第一阶段的目标是让 Agent 将自然语言指令解析为受约束的抓取任务，并在 MuJoCo 中执行、验证和处理失败。第二阶段再加入 ROS 2 Jazzy 执行接口。
+Windows 上的机械臂任务编排演示：DeepSeek 将自然语言解析为受约束的任务，ROS 2 节点按单机械臂资源顺序执行任务，MuJoCo 负责物理仿真和结果验证。
 
-## 技术栈
+![任务开始时的 xArm7 与方块](media/initial.png)
+![放置完成后，方块位于绿色目标区域](media/final.png)
 
-- Windows 11、Pixi、Python 3.12
-- MuJoCo 官方 Python 包与交互式 viewer；Franka Panda 机械臂模型来自 MuJoCo Menagerie
-- NumPy 用于运动学计算；Pydantic 校验 Agent 输出；pytest 运行无界面的仿真验收
-- LLM 客户端保持可替换；选定服务后再加入其 SDK，不让模型直接输出关节角或控制量
+## 当前已实现
 
-## 第一阶段的目标链路
+- xArm7 机械臂、夹爪、方块和目标区的 MJCF 场景。机械臂采用 MuJoCo Menagerie 的 [xArm7 模型](https://github.com/google-deepmind/mujoco_menagerie/tree/main/ufactory_xarm7)，保留原模型的 BSD-3-Clause 许可证。
+- 基于末端位姿雅可比的逆运动学，以及接近、夹取、抬升、搬运、释放、撤离的确定性执行流程。
+- 根据指尖接触、方块抬升及最终位置判断物理任务成败；夹爪不闭合时会判失败。
+- ROS 2 Jazzy Topic 桥接：任务命令、阶段事件、关节状态、单机械臂任务队列、重复请求拒绝与运行中取消。
+- DeepSeek JSON 任务解析器：只接受场景中的物体和目标，模型不能输出关节控制量。
 
-自然语言 → Agent 生成 `PickPlaceTask` → 场景实体校验 → 抓取任务状态机 → MuJoCo 执行 → 物理状态验证 → 结果反馈给 Agent。
+## 快速运行
 
-首个演示任务：将指定颜色的方块抓取并放入指定盒子。成功条件包括真实夹爪接触、物体抬升、搬运及释放后在目标区域稳定停留。初期读取仿真状态定位物体，不将其表述为视觉感知。
-
-实现时保留 `RobotBackend` 边界：任务编排只依赖场景观察和技能执行接口。第二阶段用 ROS 2 节点、Topic 和 Action 接入同一编排层。
-
-## 本地环境
+从项目根目录执行：
 
 ```powershell
 pixi install
-pixi run python -c "import mujoco; print(mujoco.__version__)"
+pixi run python -m mujoco_demo.run_pick_place --screenshots-dir artifacts
+pixi run python -m mujoco_demo.run_pick_place --viewer
+pixi run test
 ```
 
-机械臂场景、Agent 和执行器尚未实现。实现仿真场景后，使用 `pixi run test` 运行无界面的验收测试。
+无界面运行返回结构化阶段记录，并在 `artifacts/` 生成截图。`--viewer` 会以实时速度显示动作，关闭窗口后退出。
+
+ROS 2 使用独立的 Pixi 环境。先在终端 A 启动桥接节点，再在终端 B 发送离线任务：
+
+```powershell
+pixi run --manifest-path ros2/pixi.toml python ros2/bridge_node.py
+pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py --offline
+```
+
+真实自然语言解析从项目根目录的 `.env` 或进程环境读取 `DEEPSEEK_API_KEY`：
+
+```powershell
+pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"
+```
+
+任务队列与节点通信的独立检查：
+
+```powershell
+pixi run --manifest-path ros2/pixi.toml smoke
+pixi run --manifest-path ros2/pixi.toml smoke-queue
+```
+
+## 边界
+
+当前场景只有一个方块和一个目标区，物体定位直接读取仿真状态，不涉及视觉识别。ROS 2 桥接使用带请求 ID 的 Topic 消息；尚未实现自定义 Action、真机驱动或端侧安全控制。
