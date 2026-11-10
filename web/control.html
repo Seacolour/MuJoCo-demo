@@ -133,8 +133,13 @@
           const progress = index < finishedSteps ? '已完成' : task.current_step === index + 1 && task.status === 'executing' ? '执行中' : '等待中';
           return `<div class="plan-step"><span class="step-index">${index + 1}</span><span>${escapeHtml(source)} → ${escapeHtml(target)}</span><span class="step-state">${progress}</span></div>`;
         }).join('')}</div>` : '';
+        let taskSummary = '等待任务解析';
+        if (task.result?.already_satisfied) taskSummary = '目标已满足，无需移动机械臂';
+        else if (task.total_steps > 1) taskSummary = `第 ${Math.min(task.current_step || 1, task.total_steps)} / ${task.total_steps} 步`;
+        else if (task.parsed_task) taskSummary = (state.scene?.objects?.[task.parsed_task.object_name]?.label || task.parsed_task.object_name) + ' → ' + (state.scene?.zones?.[task.parsed_task.target_name]?.label || task.parsed_task.target_name);
+        else if (task.status === 'rejected') taskSummary = '任务未进入执行';
         return `<article class="task"><div class="task-top"><p class="instruction">${escapeHtml(task.instruction)}</p><span class="badge ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</span></div>
-          <div class="task-meta">${task.total_steps > 1 ? `第 ${Math.min(task.current_step || 1, task.total_steps)} / ${task.total_steps} 步` : task.parsed_task ? escapeHtml((state.scene?.objects?.[task.parsed_task.object_name]?.label || task.parsed_task.object_name) + ' → ' + (state.scene?.zones?.[task.parsed_task.target_name]?.label || task.parsed_task.target_name)) : task.status === 'rejected' ? '任务未进入执行' : '等待任务解析'} · ${new Date(task.created_at * 1000).toLocaleTimeString()}</div>
+          <div class="task-meta">${escapeHtml(taskSummary)} · ${new Date(task.created_at * 1000).toLocaleTimeString()}</div>
           ${plan}${path ? `<div class="timeline">${path}</div>` : ''}${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ''}
           ${canCancel ? `<button class="cancel" data-cancel="${escapeHtml(task.request_id)}" type="button">取消任务</button>` : ''}</article>`;
       }).join('') : '<div class="empty">发送第一条指令后，这里会显示任务状态。</div>';

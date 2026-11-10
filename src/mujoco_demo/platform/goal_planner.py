@@ -6,8 +6,8 @@ from mujoco_demo.shared.contracts import PickPlaceTask
 from mujoco_demo.shared.task_plan import TaskPlan, validate_plan
 
 
-def expand_goal_plan(scene: dict[str, object], requested: TaskPlan) -> TaskPlan:
-    """Keep feasible ordered steps; repair blocked distinct-object goals within four moves."""
+def expand_goal_plan(scene: dict[str, object], requested: TaskPlan) -> TaskPlan | None:
+    """Return None when goals hold; otherwise find at most four executable moves."""
     objects = scene["objects"]
     zones = scene["zones"]
     for index, step in enumerate(requested.steps, start=1):
@@ -48,7 +48,7 @@ def expand_goal_plan(scene: dict[str, object], requested: TaskPlan) -> TaskPlan:
     goals = {step.object_name: step.target_name for step in requested.steps}
     final = tuple(goals.get(name, current_zone[name]) for name in object_names)
     if initial == final:
-        raise ValueError("方块已处于请求的目标区域")
+        return None
 
     ordered_objects = tuple(dict.fromkeys(requested_objects + list(object_names)))
     ordered_zones = tuple(dict.fromkeys(target_zones + list(zone_names)))

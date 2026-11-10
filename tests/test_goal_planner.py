@@ -45,3 +45,14 @@ def test_two_objects_cannot_finish_in_the_same_zone() -> None:
     ))
     with pytest.raises(ValueError, match="不能同时占用"):
         expand_goal_plan(swapped_scene(), request)
+
+
+def test_already_satisfied_goals_need_no_robot_moves() -> None:
+    scene = swapped_scene()
+    scene["zones"]["red_zone"]["occupied_by"] = "red_cube"
+    scene["zones"]["green_zone"]["occupied_by"] = "green_cube"
+    request = TaskPlan(steps=(
+        PickPlaceTask(object_name="red_cube", target_name="red_zone"),
+        PickPlaceTask(object_name="green_cube", target_name="green_zone"),
+    ))
+    assert expand_goal_plan(scene, request) is None

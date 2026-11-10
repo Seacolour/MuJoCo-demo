@@ -49,7 +49,7 @@ def main() -> None:
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}), patch.object(
             DeepSeekPlanner, "parse_plan",
             side_effect=lambda instruction, _scene: {
-                "invalid": invalid, "valid": valid, "swap": swap,
+                "invalid": invalid, "valid": valid, "swap": swap, "already": swap,
             }[instruction],
         ):
             rejected = wait_for_task(platform, bridge, platform.submit("invalid")["request_id"])
@@ -71,6 +71,15 @@ def main() -> None:
             assert scene["zones"]["red_zone"]["occupied_by"] == "red_cube"
             assert scene["zones"]["green_zone"]["occupied_by"] == "green_cube"
             assert scene["zones"]["blue_zone"]["occupied_by"] is None
+
+            already = wait_for_task(platform, bridge, platform.submit("already")["request_id"])
+            assert already["status"] == "succeeded", already
+            assert already["plan"] == []
+            assert already["total_steps"] == 0
+            assert already["result"]["steps"] == []
+            assert already["result"]["already_satisfied"] is True
+            assert already["result"]["scene_revision"] == 5
+            assert bridge.scene_revision == 5, "already-satisfied task moved the robot"
         print("ROS 2 compound task orchestration OK")
     finally:
         platform.stop()

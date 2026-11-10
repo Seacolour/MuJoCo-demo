@@ -141,12 +141,32 @@ class AgentControlPlatform:
                 instruction = str(self._task_snapshot(request_id)["instruction"])
                 requested = DeepSeekPlanner().parse_plan(instruction, scene)
                 plan = expand_goal_plan(scene, requested)
-                validate_plan(scene, plan)
+                if plan is not None:
+                    validate_plan(scene, plan)
                 with self._lock:
                     if self._tasks[request_id]["status"] == "cancelled":
                         continue
                 if not self._ros.has_bridge():
                     raise RuntimeError("ROS 2 task bridge is unavailable")
+                if plan is None:
+                    current_scene = self.scene()
+                    if current_scene is None or current_scene.get("revision") != scene.get("revision"):
+                        raise RuntimeError("场景在任务解析期间发生变化，请重试")
+                    with self._lock:
+                        if self._tasks[request_id]["status"] == "cancelled":
+                            continue
+                        self._set_task(
+                            request_id,
+                            status="succeeded",
+                            plan=[],
+                            total_steps=0,
+                            result={
+                                "steps": [],
+                                "already_satisfied": True,
+                                "scene_revision": scene.get("revision"),
+                            },
+                        )
+                    continue
                 self._set_task(
                     request_id,
                     status="queued",

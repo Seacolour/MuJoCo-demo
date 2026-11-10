@@ -22,6 +22,6 @@ For the persistent two-cube, three-zone scene, use `bridge_node.py --multi --vie
 
 `pixi run --manifest-path ros2/pixi.toml smoke-multi` validates two queued commands against the same simulation state.
 
-`pixi run --manifest-path ros2/pixi.toml smoke-plan` verifies preflight rejection, a valid two-step parent task, and a three-step swap through the empty blue zone. ROS 2 currently transports each high-level tool call through Topics; changing the transport to an Action does not perform natural-language decomposition.
+`pixi run --manifest-path ros2/pixi.toml smoke-plan` verifies preflight rejection, a valid two-step parent task, a three-step swap through the empty blue zone, and zero-step success when the final goals already hold. ROS 2 currently transports each high-level tool call through Topics; changing the transport to an Action does not perform natural-language decomposition.
 
 Use `pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"` instead of `--offline` to parse the instruction with DeepSeek. The agent reads `DEEPSEEK_API_KEY` from the process environment or the project root `.env` file.
