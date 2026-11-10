@@ -3,11 +3,14 @@
 import json
 import os
 from pathlib import Path
+import re
 from urllib import error, request
 
 from dotenv import dotenv_values
+from pydantic import ValidationError
 
 from mujoco_demo.contracts import PickPlaceTask
+from mujoco_demo.task_plan import TaskPlan
 
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
@@ -40,6 +43,40 @@ class DeepSeekPlanner:
             "不得输出坐标、关节角或控制量。"
             f"当前场景 JSON：{json.dumps({'objects': objects, 'zones': zones}, ensure_ascii=False)}"
         )
+        parsed = self._complete_json(instruction, system_prompt, max_tokens=320)
+        task = PickPlaceTask.model_validate(parsed)
+        if task.object_name not in objects or task.target_name not in zones:
+            raise ValueError("DeepSeek selected an object or target outside the current scene")
+        if zones[task.target_name].get("occupied_by") is not None:
+            raise ValueError("目标区域已被占用")
+        return task
+
+    def parse_plan(self, instruction: str, scene: dict[str, object]) -> TaskPlan:
+        system_prompt = (
+            "你是机械臂任务规划器。只返回 JSON 对象，不输出解释或代码。"
+            "把用户的每个搬运要求拆成一个按原文顺序排列的 pick_place 工具调用；不得遗漏步骤。"
+            "最多四步。合法格式示例："
+            '{"steps":[{"object_name":"green_cube","target_name":"red_zone"},'
+            '{"object_name":"red_cube","target_name":"green_zone"}]}。'
+            '如果无法确定所有步骤，返回 {"error":"unsupported_task"}。'
+            "只选择场景中提供的物体和区域 ID；不要生成坐标、关节角或控制代码。"
+            f"当前场景 JSON：{json.dumps(scene, ensure_ascii=False)}"
+        )
+        parsed = self._complete_json(instruction, system_prompt, max_tokens=512)
+        try:
+            plan = TaskPlan.model_validate(parsed)
+        except ValidationError as exc:
+            raise ValueError("任务规划格式不符合要求，最多支持四步") from exc
+        explicit_moves = len(re.findall(r"(?:把|将)(?:红色|绿色)", instruction))
+        if (re.search(r"然后|接着|随后|再把|再将|并且", instruction)
+                or explicit_moves > 1) and len(plan.steps) < 2:
+            raise ValueError("多步骤指令未完整解析，未执行机械臂动作")
+        for step in plan.steps:
+            if step.object_name not in scene["objects"] or step.target_name not in scene["zones"]:
+                raise ValueError("DeepSeek selected an object or target outside the current scene")
+        return plan
+
+    def _complete_json(self, instruction: str, system_prompt: str, *, max_tokens: int) -> dict:
         payload = {
             "model": self.model,
             "messages": [
@@ -47,7 +84,7 @@ class DeepSeekPlanner:
                 {"role": "user", "content": instruction},
             ],
             "response_format": {"type": "json_object"},
-            "max_tokens": 320,
+            "max_tokens": max_tokens,
             "stream": False,
         }
         http_request = request.Request(
@@ -85,9 +122,4 @@ class DeepSeekPlanner:
                 "target_occupied": "目标区域已被占用",
             }
             raise ValueError(messages.get(reason, "当前场景无法执行这条指令"))
-        task = PickPlaceTask.model_validate(parsed)
-        if task.object_name not in objects or task.target_name not in zones:
-            raise ValueError("DeepSeek selected an object or target outside the current scene")
-        if zones[task.target_name].get("occupied_by") is not None:
-            raise ValueError("目标区域已被占用")
-        return task
+        return parsed

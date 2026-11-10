@@ -52,6 +52,10 @@
     .task-top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
     .instruction { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.5; }
     .task-meta { margin-top: 8px; color: #91a8bc; font-size: 12px; }
+    .plan { display: grid; gap: 6px; margin-top: 12px; }
+    .plan-step { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #32465c; border-radius: 8px; color: #bed0e0; font-size: 12px; }
+    .step-index { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 50%; background: #2b6673; color: #d9f8f2; font-size: 10px; }
+    .step-state { margin-left: auto; color: #86a7bc; white-space: nowrap; }
     .badge { flex: none; font-size: 11px; border-radius: 999px; padding: 5px 9px; background: #30445d; color: #bdd0e2; }
     .badge.succeeded { background: #174b3d; color: #75e3b3; }
     .badge.failed, .badge.rejected { background: #5a3338; color: #f3a9aa; }
@@ -83,7 +87,7 @@
             <textarea id="instruction" maxlength="500" placeholder="例如：把红色方块放到蓝色区域"></textarea>
             <div class="actions"><span id="form-message" class="message"></span><button id="submit" class="primary" type="submit">发送指令 →</button></div>
           </form>
-          <div class="examples"><button class="example" type="button" data-example="把红色方块放到蓝色区域">红方块 → 蓝区</button><button class="example" type="button" data-example="把绿色方块放到红色区域">绿方块 → 红区</button></div>
+          <div class="examples"><button class="example" type="button" data-example="把红色方块放到蓝色区域">红方块 → 蓝区</button><button class="example" type="button" data-example="把绿色方块放到红色区域">绿方块 → 红区</button><button class="example" type="button" data-example="先把绿色方块放到红色区域，然后把红色方块放到绿色区域">两步任务</button></div>
         </div>
       </section>
       <section>
@@ -120,11 +124,18 @@
     function renderTasks() {
       $('task-count').textContent = `${state.tasks.length} 个任务`;
       $('tasks').innerHTML = state.tasks.length ? state.tasks.map(task => {
-        const path = task.events.filter(event => event.phase).map(event => `<span class="phase">${escapeHtml(phases[event.phase] || event.phase)}</span>`).join('');
+        const path = task.events.filter(event => event.phase).map(event => `<span class="phase">${task.total_steps > 1 ? `第${event.step_index}步·` : ''}${escapeHtml(phases[event.phase] || event.phase)}</span>`).join('');
         const canCancel = !['succeeded','failed','rejected','cancelled','cancel_requested'].includes(task.status);
+        const finishedSteps = task.result?.steps?.length || 0;
+        const plan = task.plan?.length > 1 ? `<div class="plan">${task.plan.map((step, index) => {
+          const source = state.scene?.objects?.[step.object_name]?.label || step.object_name;
+          const target = state.scene?.zones?.[step.target_name]?.label || step.target_name;
+          const progress = index < finishedSteps ? '已完成' : task.current_step === index + 1 && task.status === 'executing' ? '执行中' : '等待中';
+          return `<div class="plan-step"><span class="step-index">${index + 1}</span><span>${escapeHtml(source)} → ${escapeHtml(target)}</span><span class="step-state">${progress}</span></div>`;
+        }).join('')}</div>` : '';
         return `<article class="task"><div class="task-top"><p class="instruction">${escapeHtml(task.instruction)}</p><span class="badge ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</span></div>
-          <div class="task-meta">${task.parsed_task ? escapeHtml((state.scene?.objects?.[task.parsed_task.object_name]?.label || task.parsed_task.object_name) + ' → ' + (state.scene?.zones?.[task.parsed_task.target_name]?.label || task.parsed_task.target_name)) : task.status === 'rejected' ? '任务未进入执行' : '等待任务解析'} · ${new Date(task.created_at * 1000).toLocaleTimeString()}</div>
-          ${path ? `<div class="timeline">${path}</div>` : ''}${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ''}
+          <div class="task-meta">${task.total_steps > 1 ? `第 ${Math.min(task.current_step || 1, task.total_steps)} / ${task.total_steps} 步` : task.parsed_task ? escapeHtml((state.scene?.objects?.[task.parsed_task.object_name]?.label || task.parsed_task.object_name) + ' → ' + (state.scene?.zones?.[task.parsed_task.target_name]?.label || task.parsed_task.target_name)) : task.status === 'rejected' ? '任务未进入执行' : '等待任务解析'} · ${new Date(task.created_at * 1000).toLocaleTimeString()}</div>
+          ${plan}${path ? `<div class="timeline">${path}</div>` : ''}${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ''}
           ${canCancel ? `<button class="cancel" data-cancel="${escapeHtml(task.request_id)}" type="button">取消任务</button>` : ''}</article>`;
       }).join('') : '<div class="empty">发送第一条指令后，这里会显示任务状态。</div>';
     }

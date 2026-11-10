@@ -12,12 +12,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 import uvicorn
 
 from mujoco_demo.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.task_plan import TaskPlan, validate_plan
 from mujoco_demo.ros_contracts import (
     CANCEL_TOPIC, COMMAND_TOPIC, EVENT_TOPIC, SCENE_TOPIC,
     TaskCancel, TaskCommand, TaskEvent,
@@ -49,6 +51,13 @@ class AgentControlPlatform(Node):
         self._scene: dict[str, object] | None = None
         self._listeners: set[Queue[str]] = set()
         self._pending: Queue[str | None] = Queue()
+        self._executor = SingleThreadedExecutor()
+        self._executor.add_node(self)
+        self._child_to_parent: dict[str, tuple[str, int]] = {}
+        self._active_parent_id: str | None = None
+        self._active_step_id: str | None = None
+        self._step_done = threading.Event()
+        self._step_result: TaskEvent | None = None
         self._stop = threading.Event()
         self._ros_thread = threading.Thread(target=self._spin_ros, daemon=True)
         self._planner_thread = threading.Thread(target=self._plan_tasks, daemon=True)
@@ -62,11 +71,12 @@ class AgentControlPlatform(Node):
         self._pending.put(None)
         self._planner_thread.join(timeout=5)
         self._ros_thread.join(timeout=5)
+        self._executor.shutdown()
         self.destroy_node()
 
     def _spin_ros(self) -> None:
         while not self._stop.is_set() and rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.1)
+            self._executor.spin_once(timeout_sec=0.1)
 
     def _emit(self, payload: dict[str, object]) -> None:
         message = json.dumps(payload, ensure_ascii=False)
@@ -96,6 +106,9 @@ class AgentControlPlatform(Node):
                 "status": "received",
                 "phase": None,
                 "parsed_task": None,
+                "plan": None,
+                "current_step": 0,
+                "total_steps": 0,
                 "result": None,
                 "error": None,
                 "events": [],
@@ -114,14 +127,12 @@ class AgentControlPlatform(Node):
             status = self._tasks[request_id]["status"]
             if status in FINAL_STATES:
                 return self._task_snapshot(request_id)
-            if status in {"received", "parsing"}:
-                next_status = "cancelled"
-            else:
-                next_status = "cancel_requested"
+            active_step_id = self._active_step_id if self._active_parent_id == request_id else None
+            next_status = "cancel_requested" if active_step_id else "cancelled"
         self._set_task(request_id, status=next_status)
-        if next_status == "cancel_requested":
+        if active_step_id is not None:
             self.cancel_publisher.publish(
-                String(data=TaskCancel(request_id=request_id).model_dump_json())
+                String(data=TaskCancel(request_id=active_step_id).model_dump_json())
             )
         return self._task_snapshot(request_id)
 
@@ -142,43 +153,127 @@ class AgentControlPlatform(Node):
                 if scene is None:
                     raise RuntimeError("MuJoCo scene is unavailable; start the multi-scene bridge")
                 instruction = str(self._task_snapshot(request_id)["instruction"])
-                task = DeepSeekPlanner().parse(instruction, scene)
+                plan = DeepSeekPlanner().parse_plan(instruction, scene)
+                validate_plan(scene, plan)
                 with self._lock:
                     if self._tasks[request_id]["status"] == "cancelled":
                         continue
                 if self.command_publisher.get_subscription_count() == 0:
                     raise RuntimeError("ROS 2 task bridge is unavailable")
-                self._set_task(request_id, status="queued", parsed_task=task.model_dump())
-                self.command_publisher.publish(
-                    String(data=TaskCommand(request_id=request_id, task=task).model_dump_json())
+                self._set_task(
+                    request_id,
+                    status="queued",
+                    plan=[step.model_dump() for step in plan.steps],
+                    total_steps=len(plan.steps),
                 )
             except Exception as exc:
-                self._set_task(request_id, status="rejected", error=str(exc))
+                if self._task_snapshot(request_id)["status"] != "cancelled":
+                    self._set_task(request_id, status="rejected", error=str(exc))
+                continue
+            self._execute_plan(request_id, plan)
+
+    def _execute_plan(self, request_id: str, plan: TaskPlan) -> None:
+        step_results: list[dict[str, object]] = []
+        for index, step in enumerate(plan.steps, start=1):
+            if self._task_snapshot(request_id)["status"] in {"cancelled", "cancel_requested"}:
+                self._set_task(request_id, status="cancelled")
+                return
+            scene = self.scene()
+            if scene is None:
+                self._set_task(request_id, status="failed", error="仿真场景已断开")
+                return
+            try:
+                validate_plan(scene, TaskPlan(steps=plan.steps[index - 1:]))
+            except ValueError as exc:
+                self._set_task(
+                    request_id, status="rejected" if index == 1 else "failed", error=str(exc)
+                )
+                return
+            if self.command_publisher.get_subscription_count() == 0:
+                self._set_task(request_id, status="failed", error="ROS 2 执行桥接已断开")
+                return
+
+            child_id = f"{request_id}:step:{index}"
+            with self._lock:
+                self._child_to_parent[child_id] = (request_id, index)
+                self._active_parent_id = request_id
+                self._active_step_id = child_id
+                self._step_result = None
+                self._step_done.clear()
+            self._set_task(
+                request_id, status="executing", current_step=index,
+                parsed_task=step.model_dump(), phase=None,
+            )
+            self.command_publisher.publish(
+                String(data=TaskCommand(request_id=child_id, task=step).model_dump_json())
+            )
+            if not self._step_done.wait(timeout=90):
+                self.cancel_publisher.publish(
+                    String(data=TaskCancel(request_id=child_id).model_dump_json())
+                )
+                with self._lock:
+                    self._active_parent_id = None
+                    self._active_step_id = None
+                    self._child_to_parent.pop(child_id, None)
+                self._set_task(request_id, status="failed", error=f"第 {index} 步执行超时")
+                return
+            with self._lock:
+                outcome = self._step_result
+                self._active_parent_id = None
+                self._active_step_id = None
+                self._child_to_parent.pop(child_id, None)
+            if outcome is None or outcome.status != "completed":
+                status = "cancelled" if outcome is not None and outcome.status == "cancelled" else "failed"
+                message = outcome.message if outcome is not None else "执行结果缺失"
+                self._set_task(request_id, status=status, error=f"第 {index} 步：{message}")
+                return
+            step_results.append({
+                "index": index, "tool": "pick_place", "task": step.model_dump(),
+                "result": outcome.result,
+            })
+            self._set_task(request_id, result={"steps": list(step_results)})
+            if index < len(plan.steps):
+                previous_revision = int(scene.get("revision", 0))
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    current = self.scene()
+                    if current is not None and int(current.get("revision", 0)) > previous_revision:
+                        break
+                    time.sleep(0.05)
+                else:
+                    self._set_task(request_id, status="failed", error="执行后场景状态未更新")
+                    return
+        self._set_task(request_id, status="succeeded", phase=None)
 
     def _on_event(self, message: String) -> None:
         event = TaskEvent.model_validate_json(message.data)
         with self._lock:
-            if event.request_id not in self._tasks:
+            mapping = self._child_to_parent.get(event.request_id)
+            if mapping is None:
                 return
-            task = self._tasks[event.request_id]
+            request_id, step_index = mapping
+            task = self._tasks[request_id]
             task["events"].append({
                 "status": event.status,
                 "phase": event.phase,
                 "message": event.message,
+                "step_index": step_index,
                 "time": time.time(),
             })
-        status = {
-            "accepted": "executing", "queued": "queued", "phase": "executing",
-            "completed": "succeeded", "failed": "failed", "rejected": "rejected",
-            "cancel_requested": "cancel_requested", "cancelled": "cancelled",
-        }[event.status]
-        self._set_task(
-            event.request_id,
-            status=status,
-            phase=event.phase if event.phase else self._task_snapshot(event.request_id)["phase"],
-            result=event.result if event.result is not None else self._task_snapshot(event.request_id)["result"],
-            error=event.message if event.message else self._task_snapshot(event.request_id)["error"],
-        )
+            if event.request_id == self._active_step_id and event.status in {
+                "completed", "failed", "rejected", "cancelled"
+            }:
+                self._step_result = event
+                self._step_done.set()
+        if event.status == "phase":
+            if self._task_snapshot(request_id)["status"] != "cancel_requested":
+                self._set_task(request_id, phase=event.phase)
+        elif event.status == "accepted":
+            self._set_task(request_id, status="executing")
+        elif event.status == "queued":
+            self._set_task(request_id, status="queued")
+        else:
+            self._emit({"kind": "task", "task": self._task_snapshot(request_id)})
 
     def _on_scene(self, message: String) -> None:
         scene = json.loads(message.data)

@@ -1,6 +1,6 @@
 # MuJoCo xArm7 Agent 遥控平台
 
-在 Windows 11 上用自然语言持续控制仿真机械臂。浏览器遥控台负责下达指令和展示状态；独立的 MuJoCo Viewer 持续显示 xArm7 在同一场景中的动作。DeepSeek 将指令解析为受约束的任务，ROS 2 Jazzy 传递命令、阶段事件和场景状态，MuJoCo 负责物理执行与结果验证。
+在 Windows 11 上用自然语言持续控制仿真机械臂。浏览器遥控台负责下达指令和展示状态；独立的 MuJoCo Viewer 持续显示 xArm7 在同一场景中的动作。DeepSeek 将指令解析为有序的高层任务计划，ROS 2 Jazzy 传递每一步命令、阶段事件和场景状态，MuJoCo 负责物理执行与结果验证。
 
 ![浏览器遥控台展示两条已完成任务及场景占用](media/control-platform.png)
 ![初始场景：红绿方块与三个目标区](media/multi-initial.png)
@@ -10,7 +10,7 @@
 
 - 两个方块、三个颜色目标区；六种物体到区域的单任务组合均完成物理抓取、抬升、放置和稳定性验证。
 - 同一个仿真场景连续执行多条任务；目标占用、未知物体、另一块方块位移和夹爪未抓起会被检测。
-- DeepSeek 根据当前场景目录选择物体与目标，只返回结构化 ID；模型不生成关节角或控制代码。
+- DeepSeek 根据当前场景目录生成最多四步的 `pick_place` 工具调用；平台在运动前检查整份计划，只有每一步均通过物理验收才标记整条指令成功。模型不生成关节角或控制代码。
 - ROS 2 Topic 桥接提供排队、去重、取消、阶段反馈、关节状态和带版本的场景快照。
 - 浏览器遥控台显示连接状态、物体与区域、自然语言输入、任务队列、执行阶段、拒绝原因和取消操作。
 
@@ -28,7 +28,7 @@ pixi run --manifest-path ros2/pixi.toml python ros2/bridge_node.py --multi --vie
 pixi run --manifest-path ros2/pixi.toml python ros2/control_platform.py
 ```
 
-浏览器访问 `http://127.0.0.1:8765`，依次输入“把红色方块放到蓝色区域”和“把绿色方块放到红色区域”。第二条任务会读取第一条任务完成后的场景。关闭两个终端即可停止服务。
+浏览器访问 `http://127.0.0.1:8765`。可以依次发送两条单任务，也可以一次输入“先把绿色方块放到红色区域，然后把红色方块放到绿色区域”。后一步会读取前一步完成后的场景；若后续步骤的目标被占用，整条计划会在机械臂动作前被拒绝。关闭两个终端即可停止服务。
 
 ## 命令行与验收
 
@@ -40,10 +40,11 @@ pixi run python -m mujoco_demo.run_pick_place --screenshots-dir artifacts
 # 物理测试和 ROS 2 连续任务检查
 pixi run test
 pixi run --manifest-path ros2/pixi.toml smoke-multi
+pixi run --manifest-path ros2/pixi.toml smoke-plan
 ```
 
 项目扩展顺序与剩余工作见 [多物体机械臂 Agent 遥控平台实施计划](docs/multi-object-control-platform-plan.md)。
 
 ## 当前边界
 
-物体的颜色和位置来自仿真元数据，没有相机视觉识别。ROS 2 桥接目前使用 Topic 消息，自定义 Action 与真机驱动尚未接入。浏览器任务记录保存在平台进程内，服务重启后会清空；当前队列由桥接节点执行，平台服务负责提交与展示任务。所有验证均在仿真中完成。
+物体的颜色和位置来自仿真元数据，没有相机视觉识别。目前唯一执行类技能是 `pick_place`；ROS 2 桥接使用 Topic 消息，自定义 Action 与真机驱动尚未接入。浏览器任务记录保存在平台进程内，服务重启后会清空。所有验证均在仿真中完成。
