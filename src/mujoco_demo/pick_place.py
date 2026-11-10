@@ -10,9 +10,11 @@ import numpy as np
 
 from mujoco_demo.contracts import PickPlaceTask
 from mujoco_demo.kinematics import ARM_JOINT_NAMES, site_quaternion, solve_tcp_pose
+from mujoco_demo.scene_catalog import SceneCatalog
 
 
 SCENE_PATH = Path(__file__).resolve().parents[2] / "model" / "ufactory_xarm7" / "pick_place_scene.xml"
+MULTI_SCENE_PATH = SCENE_PATH.with_name("multi_object_scene.xml")
 GRIPPER_OPEN = 0.0
 GRIPPER_CLOSED = 255.0
 
@@ -46,6 +48,7 @@ class PickPlaceResult:
     cube_start_m: tuple[float, float, float]
     cube_final_m: tuple[float, float, float]
     target_m: tuple[float, float, float]
+    max_other_object_displacement_m: float = 0.0
     phases: tuple[PhaseReport, ...] = field(default_factory=tuple)
     failure_reason: str | None = None
 
@@ -58,8 +61,9 @@ class PickPlaceSimulation:
         close_command: float = GRIPPER_CLOSED,
         on_phase: Callable[[PhaseReport], None] | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        scene_path: Path = SCENE_PATH,
     ) -> None:
-        self.model = mujoco.MjModel.from_xml_path(str(SCENE_PATH))
+        self.model = mujoco.MjModel.from_xml_path(str(scene_path))
         self.data = mujoco.MjData(self.model)
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
@@ -72,6 +76,12 @@ class PickPlaceSimulation:
         self.tcp_id = self.model.site("link_tcp").id
         self.gripper_id = self.model.actuator("gripper").id
         self.orientation = site_quaternion(self.data, self.tcp_id)
+        self.catalog = SceneCatalog(self.model)
+        pad_z = np.mean([
+            self.data.geom(name).xpos[2]
+            for name in ("left_finger_pad_1", "right_finger_pad_1")
+        ])
+        self.pad_z_offset = float(pad_z - self.data.site_xpos[self.tcp_id][2])
 
     def step_for(self, seconds: float) -> None:
         steps = round(seconds / self.model.opt.timestep)
@@ -134,16 +144,23 @@ class PickPlaceSimulation:
         return len(contacts)
 
     def run(self, task: PickPlaceTask) -> PickPlaceResult:
+        object_info, zone_info = self.catalog.validate(self.data, task)
         cube = self.data.body(task.object_name)
         target = self.data.site(task.target_name)
-        cube_geom_id = self.model.geom("red_cube_geom").id
+        cube_geom_id = object_info.geom_id
         start = cube.xpos.copy()
         target_position = target.xpos.copy()
+        other_starts = {
+            name: self.data.xpos[info.body_id].copy()
+            for name, info in self.catalog.objects.items()
+            if name != task.object_name
+        }
         phases: list[PhaseReport] = []
         grasp_verified = False
         placed_verified = False
         cancelled = False
         failure_reason: str | None = None
+        max_other_displacement = 0.0
 
         def record(name: str, tcp_error: float = 0.0) -> None:
             report = PhaseReport(
@@ -165,8 +182,11 @@ class PickPlaceSimulation:
 
             pick_xy = cube.xpos[:2].copy()
             place_xy = target_position[:2].copy()
-            grasp_z = float(cube.xpos[2] - 0.038)
-            above_z = 0.45
+            grasp_z = float(cube.xpos[2] - self.pad_z_offset)
+            place_z = float(
+                target_position[2] + object_info.half_size_m[2] - self.pad_z_offset
+            )
+            above_z = max(float(cube.xpos[2]), float(target_position[2])) + 0.12
 
             for name, point, seconds in (
                 ("approach", np.array([*pick_xy, above_z]), 1.5),
@@ -192,7 +212,7 @@ class PickPlaceSimulation:
             if error > 0.025:
                 raise RuntimeError(f"transfer: TCP missed target by {error:.3f} m")
 
-            error = self.move_tcp(np.array([*place_xy, grasp_z]), seconds=1.2)
+            error = self.move_tcp(np.array([*place_xy, place_z]), seconds=1.2)
             record("lower_to_target", error)
             self.data.ctrl[self.gripper_id] = GRIPPER_OPEN
             self.step_for(0.8)
@@ -201,12 +221,29 @@ class PickPlaceSimulation:
             error = self.move_tcp(np.array([*place_xy, above_z]))
             self.step_for(0.5)
             record("retreat", error)
-            horizontal_error = float(np.linalg.norm(cube.xpos[:2] - place_xy))
-            placed_verified = bool(horizontal_error < 0.055 and 0.325 < cube.xpos[2] < 0.36)
+            horizontal_error = np.abs(cube.xpos[:2] - place_xy)
+            allowed_error = zone_info.half_size_m[:2] - object_info.half_size_m[:2] + 0.01
+            expected_height = target_position[2] + object_info.half_size_m[2]
+            placed_verified = bool(
+                np.all(horizontal_error <= allowed_error)
+                and abs(cube.xpos[2] - expected_height) < 0.03
+            )
             if not placed_verified:
                 raise RuntimeError(
-                    f"cube missed target: horizontal error={horizontal_error:.3f} m, "
+                    f"cube missed target: horizontal error={horizontal_error.tolist()} m, "
                     f"height={cube.xpos[2]:.3f} m"
+                )
+            max_other_displacement = max(
+                (
+                    float(np.linalg.norm(self.data.xpos[self.catalog.objects[name].body_id] - position))
+                    for name, position in other_starts.items()
+                ),
+                default=0.0,
+            )
+            if max_other_displacement > 0.015:
+                placed_verified = False
+                raise RuntimeError(
+                    f"another cube moved by {max_other_displacement:.3f} m"
                 )
         except TaskCancelled as exc:
             cancelled = True
@@ -222,6 +259,7 @@ class PickPlaceSimulation:
             cube_start_m=tuple(float(x) for x in start),
             cube_final_m=tuple(float(x) for x in cube.xpos),
             target_m=tuple(float(x) for x in target_position),
+            max_other_object_displacement_m=max_other_displacement,
             phases=tuple(phases),
             failure_reason=failure_reason,
         )

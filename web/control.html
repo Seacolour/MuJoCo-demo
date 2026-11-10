@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>xArm7 Agent 遥控台</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #0b1220; color: #ecf2fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 15% 0, #1b3045 0, #0b1220 48%); }
+    button, textarea { font: inherit; }
+    button { cursor: pointer; }
+    header { padding: 28px max(24px, calc((100vw - 1320px) / 2)); display: flex; justify-content: space-between; align-items: center; gap: 20px; border-bottom: 1px solid #2b3d52; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-mark { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: #35c8b7; color: #062326; font-weight: 800; letter-spacing: -.06em; }
+    h1 { margin: 0; font-size: 21px; letter-spacing: .02em; }
+    .subtitle { margin: 4px 0 0; color: #9fb3c9; font-size: 13px; }
+    .connection { display: flex; align-items: center; gap: 9px; color: #a8b8c9; font-size: 13px; white-space: nowrap; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f1b55b; box-shadow: 0 0 0 4px #f1b55b25; }
+    .connection.online .dot { background: #46d5a8; box-shadow: 0 0 0 4px #46d5a825; }
+    main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 64px; display: grid; grid-template-columns: minmax(350px, .88fr) minmax(430px, 1.12fr); gap: 22px; }
+    .stack { display: grid; align-content: start; gap: 22px; }
+    section { border: 1px solid #2b4056; border-radius: 18px; background: #142237d9; box-shadow: 0 16px 40px #05101d35; }
+    .section-head { padding: 20px 22px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    .eyebrow { color: #78d5ca; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+    .section-body { padding: 0 22px 22px; }
+    .hint { color: #9eafc3; font-size: 13px; line-height: 1.6; margin: 0 0 14px; }
+    textarea { width: 100%; min-height: 108px; padding: 15px; resize: vertical; border-radius: 12px; border: 1px solid #3b526b; outline: none; background: #0d1a2c; color: #f1f6fb; line-height: 1.55; }
+    textarea:focus { border-color: #58cfc1; box-shadow: 0 0 0 3px #58cfc122; }
+    .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+    .primary { border: 0; border-radius: 10px; padding: 11px 18px; background: #42d0bd; color: #072d2e; font-weight: 800; }
+    .primary:disabled { opacity: .5; cursor: not-allowed; }
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+    .example { border: 1px solid #3b526b; color: #bcd4e6; border-radius: 999px; padding: 6px 10px; background: #203149; font-size: 12px; }
+    .example:hover { border-color: #5dccbf; color: #eaf8f5; }
+    .message { color: #f2bd7b; font-size: 12px; min-height: 18px; }
+    .scene-list { display: grid; gap: 10px; }
+    .entity { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid #34495f; border-radius: 11px; background: #102035; }
+    .entity-main { display: flex; align-items: center; gap: 11px; }
+    .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid #ffffff44; }
+    .swatch.red { background: #e94d4d; }.swatch.green { background: #43cb7b; }.swatch.blue { background: #4b8fff; }
+    .entity-name { font-size: 14px; font-weight: 600; }
+    .entity-sub { color: #8ea4ba; font-size: 11px; margin-top: 2px; }
+    .entity-state { color: #a9bdd0; font-size: 12px; text-align: right; }
+    .scene-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    h3 { margin: 0 0 10px; color: #9cb2c8; font-size: 12px; font-weight: 700; }
+    .revision { color: #8ba3b9; font-size: 12px; }
+    .tasks { display: grid; gap: 11px; max-height: 650px; overflow: auto; padding-right: 3px; }
+    .task { border: 1px solid #344b62; background: #0e1d30; border-radius: 12px; padding: 15px; }
+    .task-top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+    .instruction { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.5; }
+    .task-meta { margin-top: 8px; color: #91a8bc; font-size: 12px; }
+    .badge { flex: none; font-size: 11px; border-radius: 999px; padding: 5px 9px; background: #30445d; color: #bdd0e2; }
+    .badge.succeeded { background: #174b3d; color: #75e3b3; }
+    .badge.failed, .badge.rejected { background: #5a3338; color: #f3a9aa; }
+    .badge.executing { background: #21516a; color: #91d9f7; }
+    .badge.queued, .badge.parsing { background: #4d452d; color: #efd28f; }
+    .badge.cancelled, .badge.cancel_requested { background: #4a3b58; color: #dbb9f2; }
+    .timeline { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .phase { background: #20344a; color: #a9c2d5; border-radius: 6px; padding: 4px 6px; font-size: 10px; }
+    .error { margin: 11px 0 0; color: #f2a7a7; font-size: 12px; }
+    .cancel { margin-top: 12px; padding: 6px 10px; border-radius: 8px; border: 1px solid #a66e73; background: transparent; color: #ffc1c1; font-size: 12px; }
+    .empty { color: #8ea5ba; padding: 18px; border: 1px dashed #3a4e62; border-radius: 10px; text-align: center; font-size: 13px; }
+    .footnote { color: #8ea5ba; font-size: 12px; line-height: 1.6; }
+    @media (max-width: 880px) { main { grid-template-columns: 1fr; } header { align-items: start; flex-direction: column; } }
+    @media (max-width: 550px) { main { padding: 18px 12px 40px; } section { border-radius: 14px; } .scene-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><div class="brand-mark">XR</div><div><h1>xArm7 Agent 遥控台</h1><p class="subtitle">自然语言任务 · ROS 2 Jazzy · MuJoCo 持续场景</p></div></div>
+    <div id="connection" class="connection"><span class="dot"></span><span id="connection-text">正在连接仿真...</span></div>
+  </header>
+  <main>
+    <div class="stack">
+      <section>
+        <div class="section-head"><div><div class="eyebrow">Command</div><h2>下达任务</h2></div></div>
+        <div class="section-body">
+          <p class="hint">描述要移动的方块和目标区域。Agent 会解析任务，机械臂依次执行并验证结果。</p>
+          <form id="command-form">
+            <textarea id="instruction" maxlength="500" placeholder="例如：把红色方块放到蓝色区域"></textarea>
+            <div class="actions"><span id="form-message" class="message"></span><button id="submit" class="primary" type="submit">发送指令 →</button></div>
+          </form>
+          <div class="examples"><button class="example" type="button" data-example="把红色方块放到蓝色区域">红方块 → 蓝区</button><button class="example" type="button" data-example="把绿色方块放到红色区域">绿方块 → 红区</button></div>
+        </div>
+      </section>
+      <section>
+        <div class="section-head"><div><div class="eyebrow">Scene</div><h2>当前场景</h2></div><span id="revision" class="revision">等待场景</span></div>
+        <div class="section-body"><div class="scene-grid"><div><h3>方块</h3><div id="objects" class="scene-list"></div></div><div><h3>目标区域</h3><div id="zones" class="scene-list"></div></div></div></div>
+      </section>
+      <div class="footnote">MuJoCo Viewer 会作为独立窗口持续显示同一个仿真场景。颜色和位置来自仿真状态，当前版本不使用相机视觉识别。</div>
+    </div>
+    <section>
+      <div class="section-head"><div><div class="eyebrow">Execution</div><h2>任务队列与反馈</h2></div><span id="task-count" class="revision">0 个任务</span></div>
+      <div class="section-body"><div id="tasks" class="tasks"><div class="empty">发送第一条指令后，这里会显示任务状态。</div></div></div>
+    </section>
+  </main>
+  <script>
+    const state = { tasks: [], scene: null, connected: false };
+    const $ = id => document.getElementById(id);
+    const labels = { received: '已接收', parsing: '解析中', queued: '排队中', executing: '执行中', succeeded: '已完成', failed: '失败', rejected: '已拒绝', cancelled: '已取消', cancel_requested: '取消中' };
+    const phases = { settled: '准备', approach: '接近', lower: '下降', close_gripper: '夹取', lift: '抬升', transfer: '搬运', lower_to_target: '放置下降', release: '松开', retreat: '撤离' };
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+    const colorOf = name => name.startsWith('red') ? 'red' : name.startsWith('green') ? 'green' : 'blue';
+    const positionText = position => position ? position.map(n => Number(n).toFixed(2)).join(', ') + ' m' : '';
+
+    function renderScene() {
+      const scene = state.scene;
+      $('revision').textContent = scene ? `场景版本 ${scene.revision}` : '等待场景';
+      $('objects').innerHTML = scene ? Object.entries(scene.objects).map(([name, item]) => `
+        <div class="entity"><div class="entity-main"><span class="swatch ${colorOf(name)}"></span><div><div class="entity-name">${escapeHtml(item.label)}</div><div class="entity-sub">${escapeHtml(name)}</div></div></div><div class="entity-state">${escapeHtml(positionText(item.position_m))}</div></div>
+      `).join('') : '<div class="empty">等待桥接节点提供场景</div>';
+      $('zones').innerHTML = scene ? Object.entries(scene.zones).map(([name, item]) => `
+        <div class="entity"><div class="entity-main"><span class="swatch ${colorOf(name)}"></span><div><div class="entity-name">${escapeHtml(item.label)}</div><div class="entity-sub">${escapeHtml(name)}</div></div></div><div class="entity-state">${item.occupied_by ? '已占用：' + escapeHtml(scene.objects[item.occupied_by]?.label || item.occupied_by) : '空闲'}</div></div>
+      `).join('') : '<div class="empty">等待桥接节点提供场景</div>';
+    }
+
+    function renderTasks() {
+      $('task-count').textContent = `${state.tasks.length} 个任务`;
+      $('tasks').innerHTML = state.tasks.length ? state.tasks.map(task => {
+        const path = task.events.filter(event => event.phase).map(event => `<span class="phase">${escapeHtml(phases[event.phase] || event.phase)}</span>`).join('');
+        const canCancel = !['succeeded','failed','rejected','cancelled','cancel_requested'].includes(task.status);
+        return `<article class="task"><div class="task-top"><p class="instruction">${escapeHtml(task.instruction)}</p><span class="badge ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</span></div>
+          <div class="task-meta">${task.parsed_task ? escapeHtml((state.scene?.objects?.[task.parsed_task.object_name]?.label || task.parsed_task.object_name) + ' → ' + (state.scene?.zones?.[task.parsed_task.target_name]?.label || task.parsed_task.target_name)) : task.status === 'rejected' ? '任务未进入执行' : '等待任务解析'} · ${new Date(task.created_at * 1000).toLocaleTimeString()}</div>
+          ${path ? `<div class="timeline">${path}</div>` : ''}${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ''}
+          ${canCancel ? `<button class="cancel" data-cancel="${escapeHtml(task.request_id)}" type="button">取消任务</button>` : ''}</article>`;
+      }).join('') : '<div class="empty">发送第一条指令后，这里会显示任务状态。</div>';
+    }
+
+    async function refresh() {
+      try {
+        const [health, scene, tasks] = await Promise.all(['/api/health','/api/scene','/api/tasks'].map(url => fetch(url).then(r => r.json())));
+        state.connected = health.bridge_connected;
+        state.scene = scene.status ? null : scene;
+        state.tasks = tasks;
+        $('connection').classList.toggle('online', state.connected);
+        $('connection-text').textContent = state.connected ? '仿真桥接已连接' : '等待 MuJoCo 桥接';
+        renderScene(); renderTasks();
+      } catch (error) {
+        state.connected = false;
+        $('connection').classList.remove('online');
+        $('connection-text').textContent = '平台服务连接中断';
+      }
+    }
+
+    $('command-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const instruction = $('instruction').value.trim();
+      if (instruction.length < 2) { $('form-message').textContent = '请输入完整指令'; return; }
+      $('submit').disabled = true;
+      $('form-message').textContent = '正在提交...';
+      try {
+        const response = await fetch('/api/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({instruction}) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        $('instruction').value = '';
+        $('form-message').textContent = '指令已进入任务队列';
+        await refresh();
+      } catch (error) { $('form-message').textContent = `提交失败：${error.message}`; }
+      finally { $('submit').disabled = false; }
+    });
+    document.querySelectorAll('[data-example]').forEach(button => button.addEventListener('click', () => { $('instruction').value = button.dataset.example; $('instruction').focus(); }));
+    $('tasks').addEventListener('click', async event => {
+      const id = event.target.dataset.cancel;
+      if (!id) return;
+      await fetch(`/api/tasks/${encodeURIComponent(id)}/cancel`, {method:'POST'});
+      await refresh();
+    });
+
+    const stream = new EventSource('/api/events');
+    stream.onmessage = event => {
+      const update = JSON.parse(event.data);
+      if (update.kind === 'snapshot') { state.tasks = update.tasks; state.scene = update.scene; }
+      if (update.kind === 'scene') state.scene = update.scene;
+      if (update.kind === 'task') {
+        state.tasks = [update.task, ...state.tasks.filter(item => item.request_id !== update.task.request_id)];
+      }
+      renderScene(); renderTasks();
+    };
+    stream.onerror = () => setTimeout(refresh, 1000);
+    refresh();
+    setInterval(refresh, 4000);
+  </script>
+</body>
+</html>

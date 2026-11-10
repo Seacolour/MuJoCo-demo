@@ -11,6 +11,7 @@ COMMAND_TOPIC = "/mujoco_demo/task_command"
 EVENT_TOPIC = "/mujoco_demo/task_event"
 CANCEL_TOPIC = "/mujoco_demo/task_cancel"
 JOINT_STATE_TOPIC = "/mujoco_demo/joint_states"
+SCENE_TOPIC = "/mujoco_demo/scene"
 
 
 class TaskCommand(BaseModel):

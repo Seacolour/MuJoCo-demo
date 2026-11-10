@@ -3,21 +3,24 @@
 from dataclasses import asdict
 import argparse
 from collections import deque
+import json
 import threading
 import time
 
 import mujoco.viewer
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
-from mujoco_demo.pick_place import PhaseReport, PickPlaceSimulation
+from mujoco_demo.pick_place import MULTI_SCENE_PATH, PhaseReport, PickPlaceSimulation
 from mujoco_demo.ros_contracts import (
     CANCEL_TOPIC,
     COMMAND_TOPIC,
     EVENT_TOPIC,
     JOINT_STATE_TOPIC,
+    SCENE_TOPIC,
     TaskCancel,
     TaskCommand,
     TaskEvent,
@@ -25,11 +28,19 @@ from mujoco_demo.ros_contracts import (
 
 
 class MuJoCoBridge(Node):
-    def __init__(self, *, show_viewer: bool = False) -> None:
+    def __init__(self, *, show_viewer: bool = False, multi_scene: bool = False) -> None:
         super().__init__("mujoco_pick_place_bridge")
         self.show_viewer = show_viewer
+        self.simulation = PickPlaceSimulation(scene_path=MULTI_SCENE_PATH) if multi_scene else None
+        self.scene_revision = 0
         self._events = self.create_publisher(String, EVENT_TOPIC, 10)
         self._joint_states = self.create_publisher(JointState, JOINT_STATE_TOPIC, 10)
+        self._scene = self.create_publisher(
+            String,
+            SCENE_TOPIC,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=ReliabilityPolicy.RELIABLE),
+        )
         self.create_subscription(String, COMMAND_TOPIC, self._on_command, 10)
         self.create_subscription(String, CANCEL_TOPIC, self._on_cancel, 10)
         self._lock = threading.Lock()
@@ -39,6 +50,16 @@ class MuJoCoBridge(Node):
         self._seen_ids: set[str] = set()
         self._worker: threading.Thread | None = None
         self.completed_at: float | None = None
+        self._publish_scene()
+
+    def _publish_scene(self) -> None:
+        if self.simulation is None:
+            return
+        snapshot = {
+            "revision": self.scene_revision,
+            **self.simulation.catalog.snapshot(self.simulation.data),
+        }
+        self._scene.publish(String(data=json.dumps(snapshot, ensure_ascii=False)))
 
     def _publish(self, event: TaskEvent) -> None:
         self._events.publish(String(data=event.model_dump_json()))
@@ -107,12 +128,16 @@ class MuJoCoBridge(Node):
             self._joint_states.publish(state)
 
         try:
-            simulation = PickPlaceSimulation(
-                on_phase=report_phase, should_cancel=cancel.is_set
-            )
+            simulation = self.simulation or PickPlaceSimulation()
+            simulation.on_phase = report_phase
+            simulation.should_cancel = cancel.is_set
 
             def run_and_publish() -> None:
+                start_time = simulation.data.time
                 result = simulation.run(command.task)
+                if self.simulation is not None and simulation.data.time > start_time:
+                    self.scene_revision += 1
+                    self._publish_scene()
                 self._publish(
                     TaskEvent(
                         request_id=command.request_id,
@@ -122,7 +147,9 @@ class MuJoCoBridge(Node):
                     )
                 )
 
-            if self.show_viewer:
+            if self.simulation is not None:
+                run_and_publish()
+            elif self.show_viewer:
                 with mujoco.viewer.launch_passive(simulation.model, simulation.data) as viewer:
                     simulation.viewer = viewer
                     viewer.cam.lookat[:] = [0.35, 0, 0.45]
@@ -136,6 +163,8 @@ class MuJoCoBridge(Node):
                         time.sleep(1 / 60)
             else:
                 run_and_publish()
+        except ValueError as exc:
+            self._publish(TaskEvent(request_id=command.request_id, status="rejected", message=str(exc)))
         except Exception as exc:
             self._publish(TaskEvent(request_id=command.request_id, status="failed", message=str(exc)))
         finally:
@@ -153,15 +182,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="exit after one completed task")
     parser.add_argument("--viewer", action="store_true", help="show one task in the MuJoCo viewer")
+    parser.add_argument("--multi", action="store_true", help="keep a two-cube, three-zone scene across tasks")
     args = parser.parse_args()
     rclpy.init()
-    node = MuJoCoBridge(show_viewer=args.viewer)
+    node = MuJoCoBridge(show_viewer=args.viewer, multi_scene=args.multi)
     try:
-        while rclpy.ok():
-            rclpy.spin_once(node, timeout_sec=0.1)
-            if ((args.once or args.viewer) and node.completed_at is not None and node._active_id is None
-                    and time.monotonic() - node.completed_at > 1):
-                break
+        if args.multi and args.viewer:
+            assert node.simulation is not None
+            with mujoco.viewer.launch_passive(node.simulation.model, node.simulation.data) as viewer:
+                node.simulation.viewer = viewer
+                viewer.cam.lookat[:] = [0.4, 0, 0.45]
+                viewer.cam.distance = 1.35
+                viewer.cam.azimuth = 145
+                viewer.cam.elevation = -25
+                viewer.sync()
+                while rclpy.ok() and viewer.is_running():
+                    rclpy.spin_once(node, timeout_sec=0.05)
+                    if node._active_id is None:
+                        viewer.sync()
+                    if (args.once and node.completed_at is not None and node._active_id is None
+                            and time.monotonic() - node.completed_at > 1):
+                        break
+        else:
+            while rclpy.ok():
+                rclpy.spin_once(node, timeout_sec=0.1)
+                if ((args.once or args.viewer) and node.completed_at is not None and node._active_id is None
+                        and time.monotonic() - node.completed_at > 1):
+                    break
     except KeyboardInterrupt:
         pass
     finally:

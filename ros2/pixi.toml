@@ -7,8 +7,10 @@ version = "0.1.0"
 [tasks]
 smoke = "python smoke_ros.py"
 smoke-queue = "python smoke_queue.py"
+smoke-multi = "python smoke_queue.py --multi"
 bridge = "python bridge_node.py"
 agent = "python agent_client.py"
+platform = "python control_platform.py"
 
 [dependencies]
 python = "3.12.*"
@@ -17,3 +19,5 @@ ros-jazzy-xacro = ">=2.1.1,<3"
 
 [pypi-dependencies]
 mujoco-demo = { path = "..", editable = true }
+fastapi = ">=0.162.2, <0.163"
+uvicorn = ">=0.54.0, <0.55"

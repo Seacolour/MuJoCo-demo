@@ -10,3 +10,5 @@ __pycache__/
 .codex/
 MUJOCO_LOG.TXT
 artifacts/
+.playwright-cli/
+output/

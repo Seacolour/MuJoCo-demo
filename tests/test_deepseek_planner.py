@@ -34,3 +34,16 @@ def test_model_cannot_select_an_unknown_target(monkeypatch: pytest.MonkeyPatch) 
     )
     with pytest.raises(ValueError, match="outside the current scene"):
         DeepSeekPlanner(api_key="test-key").parse("把方块放到机器人底座")
+
+
+def test_incomplete_json_is_retried_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = iter([
+        BytesIO(b'{"choices":[{"message":{"content":"{invalid"}}]}'),
+        fake_response({"object_name": "red_cube", "target_name": "target_zone"}),
+    ])
+    monkeypatch.setattr(
+        "mujoco_demo.deepseek_planner.request.urlopen",
+        lambda *_args, **_kwargs: next(responses),
+    )
+    task = DeepSeekPlanner(api_key="test-key").parse("把红色方块放到绿色目标区")
+    assert task.target_name == "target_zone"
