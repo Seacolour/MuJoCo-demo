@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from mujoco_demo.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.platform.deepseek_planner import DeepSeekPlanner
 
 
 def fake_response(task: dict[str, str]) -> BytesIO:
@@ -19,7 +19,7 @@ def test_valid_deepseek_task_is_accepted(monkeypatch: pytest.MonkeyPatch) -> Non
         assert json.loads(http_request.data)["response_format"] == {"type": "json_object"}
         return fake_response({"object_name": "red_cube", "target_name": "target_zone"})
 
-    monkeypatch.setattr("mujoco_demo.deepseek_planner.request.urlopen", respond)
+    monkeypatch.setattr("mujoco_demo.platform.deepseek_planner.request.urlopen", respond)
     task = DeepSeekPlanner(api_key="test-key").parse("把红色方块放进目标区")
     assert task.object_name == "red_cube"
     assert task.target_name == "target_zone"
@@ -27,7 +27,7 @@ def test_valid_deepseek_task_is_accepted(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_model_cannot_select_an_unknown_target(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mujoco_demo.deepseek_planner.request.urlopen",
+        "mujoco_demo.platform.deepseek_planner.request.urlopen",
         lambda *_args, **_kwargs: fake_response(
             {"object_name": "red_cube", "target_name": "robot_base"}
         ),
@@ -42,7 +42,7 @@ def test_incomplete_json_is_retried_once(monkeypatch: pytest.MonkeyPatch) -> Non
         fake_response({"object_name": "red_cube", "target_name": "target_zone"}),
     ])
     monkeypatch.setattr(
-        "mujoco_demo.deepseek_planner.request.urlopen",
+        "mujoco_demo.platform.deepseek_planner.request.urlopen",
         lambda *_args, **_kwargs: next(responses),
     )
     task = DeepSeekPlanner(api_key="test-key").parse("把红色方块放到绿色目标区")

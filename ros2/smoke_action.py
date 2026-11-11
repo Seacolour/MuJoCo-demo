@@ -14,9 +14,11 @@ from mujoco_demo_interfaces.action import PickPlace
 
 from control_platform import AgentControlPlatform
 from bridge_node import MuJoCoBridge
-from mujoco_demo.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.platform.deepseek_planner import DeepSeekPlanner
 from mujoco_demo.shared.contracts import PickPlaceTask
 from mujoco_demo.shared.task_plan import TaskPlan
+
+from smoke_domain import isolate_ros_domain
 
 
 def wait_for_task(platform: AgentControlPlatform, request_id: str) -> dict:
@@ -30,6 +32,7 @@ def wait_for_task(platform: AgentControlPlatform, request_id: str) -> dict:
 
 
 def main() -> None:
+    isolate_ros_domain()
     rclpy.init()
     bridge = MuJoCoBridge(multi_scene=True, enable_action=True)
     bridge_executor = MultiThreadedExecutor(num_threads=4)

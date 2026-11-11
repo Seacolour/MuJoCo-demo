@@ -7,8 +7,11 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from smoke_domain import isolate_ros_domain
+
 
 def main() -> None:
+    isolate_ros_domain()
     rclpy.init()
     publisher_node = Node("mujoco_demo_smoke_publisher")
     subscriber_node = Node("mujoco_demo_smoke_subscriber")

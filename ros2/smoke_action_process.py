@@ -12,8 +12,11 @@ from rclpy.node import Node
 from mujoco_demo_interfaces.action import PickPlace
 from mujoco_demo.shared.ros_contracts import ACTION_NAME
 
+from smoke_domain import isolate_ros_domain
+
 
 def main() -> None:
+    isolate_ros_domain()
     bridge = subprocess.Popen(
         [sys.executable, "bridge_node.py", "--multi", "--action"],
         cwd=Path(__file__).resolve().parent,

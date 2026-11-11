@@ -8,14 +8,17 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from bridge_node import MuJoCoBridge
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.ros_contracts import COMMAND_TOPIC, EVENT_TOPIC, TaskCommand, TaskEvent
+from mujoco_demo.shared.contracts import PickPlaceTask
+from mujoco_demo.shared.ros_contracts import COMMAND_TOPIC, EVENT_TOPIC, TaskCommand, TaskEvent
+
+from smoke_domain import isolate_ros_domain
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--multi", action="store_true")
     args = parser.parse_args()
+    isolate_ros_domain()
     rclpy.init()
     bridge = MuJoCoBridge(multi_scene=args.multi)
     client = Node("mujoco_queue_smoke_client")

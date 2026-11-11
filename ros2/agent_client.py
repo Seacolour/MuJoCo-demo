@@ -10,9 +10,9 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.deepseek_planner import DeepSeekPlanner
-from mujoco_demo.ros_contracts import (
+from mujoco_demo.platform.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.shared.contracts import PickPlaceTask
+from mujoco_demo.shared.ros_contracts import (
     CANCEL_TOPIC, COMMAND_TOPIC, EVENT_TOPIC, SCENE_TOPIC,
     TaskCancel, TaskCommand, TaskEvent
 )

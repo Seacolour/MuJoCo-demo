@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.deepseek_planner import DeepSeekPlanner
-from mujoco_demo.task_plan import TaskPlan, validate_plan
+from mujoco_demo.platform.deepseek_planner import DeepSeekPlanner
+from mujoco_demo.shared.contracts import PickPlaceTask
+from mujoco_demo.shared.task_plan import TaskPlan, validate_plan
 
 
 SCENE = {
@@ -27,7 +27,7 @@ def model_response(payload: dict) -> BytesIO:
 
 def test_two_requested_moves_remain_two_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mujoco_demo.deepseek_planner.request.urlopen",
+        "mujoco_demo.platform.deepseek_planner.request.urlopen",
         lambda *_args, **_kwargs: model_response({"steps": [
             {"object_name": "green_cube", "target_name": "red_zone"},
             {"object_name": "red_cube", "target_name": "green_zone"},
@@ -44,7 +44,7 @@ def test_compound_instruction_rejects_a_truncated_one_step_plan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "mujoco_demo.deepseek_planner.request.urlopen",
+        "mujoco_demo.platform.deepseek_planner.request.urlopen",
         lambda *_args, **_kwargs: model_response({"steps": [
             {"object_name": "green_cube", "target_name": "red_zone"},
         ]}),
@@ -59,7 +59,7 @@ def test_two_named_objects_are_required_even_without_a_then_word(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "mujoco_demo.deepseek_planner.request.urlopen",
+        "mujoco_demo.platform.deepseek_planner.request.urlopen",
         lambda *_args, **_kwargs: model_response({"steps": [
             {"object_name": "red_cube", "target_name": "red_zone"},
         ]}),

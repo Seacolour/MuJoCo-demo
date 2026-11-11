@@ -3,8 +3,8 @@
 import mujoco
 import pytest
 
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.pick_place import PickPlaceSimulation
+from mujoco_demo.robot_runtime.pick_place import PickPlaceSimulation
+from mujoco_demo.shared.contracts import PickPlaceTask
 
 
 TASK = PickPlaceTask(object_name="red_cube", target_name="target_zone")

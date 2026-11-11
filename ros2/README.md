@@ -28,6 +28,8 @@ For the persistent two-cube, three-zone scene, use `bridge_node.py --multi --vie
 
 `pixi run --manifest-path ros2/pixi.toml smoke-action` exercises the platform and Action runtime with feedback, results, cancellation, duplicate IDs, and stale scene revisions. `smoke-action-process` verifies Action transport between separate Windows processes.
 
+Smoke scripts select a separate `ROS_DOMAIN_ID` so they do not interact with a running demo. Set `MUJOCO_DEMO_SMOKE_DOMAIN_ID` only when a fixed test domain is needed.
+
 The MuJoCo runtime restores the state from the start of a cancelled or failed step before returning its result. This simulation-only rollback keeps later commands executable; a physical robot would require a separate recovery procedure.
 
 Successful pick-and-place goals now retreat and return to the startup keyframe Home Pose. The final `return_home` phase is sent as Action feedback and shown in the browser.

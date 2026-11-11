@@ -5,8 +5,8 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from mujoco_demo.contracts import PickPlaceTask
-from mujoco_demo.pick_place import MULTI_SCENE_PATH, PickPlaceSimulation
+from mujoco_demo.robot_runtime.pick_place import MULTI_SCENE_PATH, PickPlaceSimulation
+from mujoco_demo.shared.contracts import PickPlaceTask
 
 
 @pytest.mark.parametrize("object_name", ["red_cube", "green_cube"])
