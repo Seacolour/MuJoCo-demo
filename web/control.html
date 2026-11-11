@@ -105,7 +105,7 @@
     const state = { tasks: [], scene: null, connected: false };
     const $ = id => document.getElementById(id);
     const labels = { received: '已接收', parsing: '解析中', queued: '排队中', executing: '执行中', succeeded: '已完成', failed: '失败', rejected: '已拒绝', cancelled: '已取消', cancel_requested: '取消中' };
-    const phases = { settled: '准备', approach: '接近', lower: '下降', close_gripper: '夹取', lift: '抬升', transfer: '搬运', lower_to_target: '放置下降', release: '松开', retreat: '撤离' };
+    const phases = { settled: '准备', approach: '接近', lower: '下降', close_gripper: '夹取', lift: '抬升', transfer: '搬运', lower_to_target: '放置下降', release: '松开', retreat: '撤离', return_home: '返回待机位' };
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
     const colorOf = name => name.startsWith('red') ? 'red' : name.startsWith('green') ? 'green' : 'blue';
     const positionText = position => position ? position.map(n => Number(n).toFixed(2)).join(', ') + ' m' : '';

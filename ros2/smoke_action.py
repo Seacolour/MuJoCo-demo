@@ -76,6 +76,7 @@ def main() -> None:
             assert completed["status"] == "succeeded", completed
             assert len(completed["result"]["steps"]) == 2
             assert any(event["phase"] == "approach" for event in completed["events"])
+            assert any(event["phase"] == "return_home" for event in completed["events"])
             assert bridge.scene_revision == 2
 
             exchanged = wait_for_task(platform, platform.submit("swap")["request_id"])

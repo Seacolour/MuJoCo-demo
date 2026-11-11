@@ -18,6 +18,17 @@ def test_each_cube_can_reach_each_zone(object_name: str, target_name: str) -> No
     assert result.success, result.failure_reason
     assert result.grasp_verified and result.placed_verified
     assert result.max_other_object_displacement_m < 0.015
+    assert result.phases[-1].name == "return_home"
+    assert simulation.home_pose.gripper_command == 0.0
+    np.testing.assert_allclose(
+        simulation.data.qpos[simulation.qpos_ids],
+        simulation.home_pose.joint_positions_rad,
+        atol=0.05,
+    )
+    release = next(phase for phase in result.phases if phase.name == "release")
+    assert np.linalg.norm(
+        np.asarray(result.phases[-1].cube_position_m) - np.asarray(release.cube_position_m)
+    ) < 0.015
     assert simulation.catalog.zone_occupant(
         simulation.data, simulation.catalog.zones[target_name]
     ) == object_name
@@ -30,6 +41,7 @@ def test_two_tasks_share_scene_state_and_occupied_zone_is_rejected() -> None:
     second = simulation.run(PickPlaceTask(object_name="green_cube", target_name="red_zone"))
 
     assert first.success and second.success
+    assert first.phases[-1].name == second.phases[-1].name == "return_home"
     assert simulation.catalog.zone_occupant(
         simulation.data, simulation.catalog.zones["blue_zone"]
     ) == "red_cube"

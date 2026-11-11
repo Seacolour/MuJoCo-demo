@@ -30,4 +30,6 @@ For the persistent two-cube, three-zone scene, use `bridge_node.py --multi --vie
 
 The MuJoCo runtime restores the state from the start of a cancelled or failed step before returning its result. This simulation-only rollback keeps later commands executable; a physical robot would require a separate recovery procedure.
 
+Successful pick-and-place goals now retreat and return to the startup keyframe Home Pose. The final `return_home` phase is sent as Action feedback and shown in the browser.
+
 Use `pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"` instead of `--offline` to parse the instruction with DeepSeek. The agent reads `DEEPSEEK_API_KEY` from the process environment or the project root `.env` file.

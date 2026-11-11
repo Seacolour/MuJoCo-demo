@@ -30,6 +30,15 @@ class TaskCancelled(RuntimeError):
 
 
 @dataclass(frozen=True)
+class HomePose:
+    """Robot joint pose and open gripper from the scene's startup keyframe."""
+
+    joint_positions_rad: tuple[float, ...]
+    tcp_position_m: tuple[float, float, float]
+    gripper_command: float
+
+
+@dataclass(frozen=True)
 class PhaseReport:
     name: str
     tcp_error_m: float
@@ -75,6 +84,11 @@ class PickPlaceSimulation:
         self.qpos_ids = self.model.jnt_qposadr[self.joint_ids]
         self.tcp_id = self.model.site("link_tcp").id
         self.gripper_id = self.model.actuator("gripper").id
+        self.home_pose = HomePose(
+            joint_positions_rad=tuple(float(x) for x in self.model.key_qpos[0, self.qpos_ids]),
+            tcp_position_m=tuple(float(x) for x in self.data.site_xpos[self.tcp_id]),
+            gripper_command=float(self.data.ctrl[self.gripper_id]),
+        )
         self.orientation = site_quaternion(self.data, self.tcp_id)
         self.catalog = SceneCatalog(self.model)
         pad_z = np.mean([
@@ -103,26 +117,42 @@ class PickPlaceSimulation:
                 self.data,
                 position,
                 self.orientation,
-                initial_angles=self.model.key_qpos[0, :7],
+                initial_angles=np.asarray(self.home_pose.joint_positions_rad),
             )
         if solution.position_error > 0.01 or solution.orientation_error > 0.1:
             raise RuntimeError(
                 f"IK failed: position error={solution.position_error:.3f} m, "
                 f"orientation error={solution.orientation_error:.3f} rad"
             )
+        self.move_joints(solution.joint_positions, seconds=seconds)
+        self.step_for(0.35)
+        return float(np.linalg.norm(self.data.site_xpos[self.tcp_id] - position))
+
+    def move_joints(self, target: np.ndarray, *, seconds: float) -> None:
         start = self.data.qpos[self.qpos_ids].copy()
         steps = max(1, round(seconds / self.model.opt.timestep))
         for step in range(steps):
             self._check_cancel()
+            if self.viewer is not None and not self.viewer.is_running():
+                raise RuntimeError("viewer closed before task completed")
             progress = (step + 1) / steps
             blend = progress * progress * (3 - 2 * progress)
-            self.data.ctrl[:7] = start + blend * (solution.joint_positions - start)
+            self.data.ctrl[:7] = start + blend * (target - start)
             mujoco.mj_step(self.model, self.data)
             if self.viewer is not None and step % 5 == 0:
                 self.viewer.sync()
                 time.sleep(5 * self.model.opt.timestep)
+
+    def move_home(self) -> float:
+        """Return to the scene's startup joint pose after the cube is released."""
+        self.data.ctrl[self.gripper_id] = self.home_pose.gripper_command
+        target = np.asarray(self.home_pose.joint_positions_rad)
+        self.move_joints(target, seconds=2.4)
         self.step_for(0.35)
-        return float(np.linalg.norm(self.data.site_xpos[self.tcp_id] - position))
+        joint_error = float(np.max(np.abs(self.data.qpos[self.qpos_ids] - target)))
+        if joint_error > 0.05:
+            raise RuntimeError(f"home pose missed by {joint_error:.3f} rad")
+        return joint_error
 
     def _check_cancel(self) -> None:
         if self.should_cancel is not None and self.should_cancel():
@@ -223,10 +253,14 @@ class PickPlaceSimulation:
             self.data.ctrl[self.gripper_id] = GRIPPER_OPEN
             self.step_for(0.8)
             record("release")
+            if self.pad_contacts(cube_geom_id) > 0:
+                raise RuntimeError("cube still contacts the gripper after release")
 
             error = self.move_tcp(np.array([*place_xy, above_z]))
             self.step_for(0.5)
             record("retreat", error)
+            self.move_home()
+            record("return_home")
             horizontal_error = np.abs(cube.xpos[:2] - place_xy)
             allowed_error = zone_info.half_size_m[:2] - object_info.half_size_m[:2] + 0.01
             expected_height = target_position[2] + object_info.half_size_m[2]
