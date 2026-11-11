@@ -28,4 +28,6 @@ For the persistent two-cube, three-zone scene, use `bridge_node.py --multi --vie
 
 `pixi run --manifest-path ros2/pixi.toml smoke-action` exercises the platform and Action runtime with feedback, results, cancellation, duplicate IDs, and stale scene revisions. `smoke-action-process` verifies Action transport between separate Windows processes.
 
+The MuJoCo runtime restores the state from the start of a cancelled or failed step before returning its result. This simulation-only rollback keeps later commands executable; a physical robot would require a separate recovery procedure.
+
 Use `pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"` instead of `--offline` to parse the instruction with DeepSeek. The agent reads `DEEPSEEK_API_KEY` from the process environment or the project root `.env` file.

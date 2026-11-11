@@ -145,6 +145,11 @@ class PickPlaceSimulation:
 
     def run(self, task: PickPlaceTask) -> PickPlaceResult:
         object_info, zone_info = self.catalog.validate(self.data, task)
+        # A simulated task is committed only after physical verification. Rewind
+        # its partial motion on cancel/failure so later tasks start from a stable state.
+        state_spec = mujoco.mjtState.mjSTATE_INTEGRATION
+        initial_state = np.empty(mujoco.mj_stateSize(self.model, state_spec))
+        mujoco.mj_getState(self.model, self.data, initial_state, state_spec)
         cube = self.data.body(task.object_name)
         target = self.data.site(task.target_name)
         cube_geom_id = object_info.geom_id
@@ -161,6 +166,7 @@ class PickPlaceSimulation:
         cancelled = False
         failure_reason: str | None = None
         max_other_displacement = 0.0
+        completed = False
 
         def record(name: str, tcp_error: float = 0.0) -> None:
             report = PhaseReport(
@@ -245,14 +251,21 @@ class PickPlaceSimulation:
                 raise RuntimeError(
                     f"another cube moved by {max_other_displacement:.3f} m"
                 )
+            completed = True
         except TaskCancelled as exc:
             cancelled = True
             failure_reason = str(exc)
         except RuntimeError as exc:
             failure_reason = str(exc)
+        finally:
+            if not completed:
+                mujoco.mj_setState(self.model, self.data, initial_state, state_spec)
+                mujoco.mj_forward(self.model, self.data)
+                if self.viewer is not None and self.viewer.is_running():
+                    self.viewer.sync()
 
         return PickPlaceResult(
-            success=grasp_verified and placed_verified,
+            success=completed,
             cancelled=cancelled,
             grasp_verified=grasp_verified,
             placed_verified=placed_verified,

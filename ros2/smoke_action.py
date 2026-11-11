@@ -15,7 +15,6 @@ from mujoco_demo_interfaces.action import PickPlace
 from control_platform import AgentControlPlatform
 from bridge_node import MuJoCoBridge
 from mujoco_demo.deepseek_planner import DeepSeekPlanner
-from mujoco_demo.robot_runtime.pick_place import PickPlaceResult
 from mujoco_demo.shared.contracts import PickPlaceTask
 from mujoco_demo.shared.task_plan import TaskPlan
 
@@ -95,35 +94,45 @@ def main() -> None:
             assert bridge.scene_revision == 5
             assert len(bridge._seen_ids) == goals_before, "zero-step task sent an Action goal"
 
-            started = threading.Event()
+            grasped = threading.Event()
+            resume_motion = threading.Event()
+            original_run = bridge.simulation.run
 
-            def wait_for_cancel(_task: PickPlaceTask) -> PickPlaceResult:
-                started.set()
-                deadline = time.monotonic() + 5
-                while time.monotonic() < deadline:
-                    if bridge.simulation.should_cancel():
-                        return PickPlaceResult(
-                            success=False, cancelled=True, grasp_verified=False,
-                            placed_verified=False, cube_start_m=(0.0, 0.0, 0.0),
-                            cube_final_m=(0.0, 0.0, 0.0), target_m=(0.0, 0.0, 0.0),
-                            failure_reason="task cancelled",
-                        )
-                    time.sleep(0.01)
-                raise TimeoutError("Action cancellation did not reach the robot runtime")
+            def pause_after_grasp(task: PickPlaceTask):
+                report_phase = bridge.simulation.on_phase
 
-            with patch.object(bridge.simulation, "run", side_effect=wait_for_cancel):
+                def report_and_pause(phase) -> None:
+                    report_phase(phase)
+                    if phase.name == "close_gripper":
+                        grasped.set()
+                        if not resume_motion.wait(5):
+                            raise TimeoutError("test did not release the grasp checkpoint")
+
+                bridge.simulation.on_phase = report_and_pause
+                return original_run(task)
+
+            with patch.object(bridge.simulation, "run", side_effect=pause_after_grasp):
                 cancel_id = platform.submit("cancel")["request_id"]
-                assert started.wait(5), "robot did not begin the Action goal"
+                assert grasped.wait(5), "robot did not grasp before cancellation"
                 platform.cancel(cancel_id)
+                deadline = time.monotonic() + 5
+                while (not bridge._active_cancel.is_set()) and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert bridge._active_cancel.is_set(), "Action cancellation did not reach the robot"
+                resume_motion.set()
                 cancelled = wait_for_task(platform, cancel_id)
                 assert cancelled["status"] == "cancelled", cancelled
                 assert bridge.scene_revision == 5
+
+            retried = wait_for_task(platform, platform.submit("cancel")["request_id"])
+            assert retried["status"] == "succeeded", retried
+            assert bridge.scene_revision == 6
 
             direct_node = Node("mujoco_action_contract_smoke")
             direct_client = ActionClient(direct_node, PickPlace, "/mujoco_demo/pick_place")
             try:
                 assert direct_client.wait_for_server(timeout_sec=5)
-                for request_id, revision in ((f"{valid_id}:step:1", 5), ("stale-revision", 0)):
+                for request_id, revision in ((f"{valid_id}:step:1", 6), ("stale-revision", 0)):
                     goal = PickPlace.Goal()
                     goal.request_id = request_id
                     goal.object_name = "red_cube"
@@ -136,7 +145,7 @@ def main() -> None:
                 invalid.request_id = "invalid-object"
                 invalid.object_name = "missing_cube"
                 invalid.target_name = "blue_zone"
-                invalid.expected_scene_revision = 5
+                invalid.expected_scene_revision = 6
                 accepted = direct_client.send_goal_async(invalid)
                 rclpy.spin_until_future_complete(direct_node, accepted, timeout_sec=5)
                 assert accepted.done() and accepted.result().accepted
@@ -145,7 +154,7 @@ def main() -> None:
                 assert result_future.done()
                 assert result_future.result().status == GoalStatus.STATUS_ABORTED
                 assert result_future.result().result.error_code == "INVALID_GOAL"
-                assert bridge.scene_revision == 5
+                assert bridge.scene_revision == 6
             finally:
                 direct_client.destroy()
                 direct_node.destroy_node()
