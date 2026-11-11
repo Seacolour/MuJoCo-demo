@@ -8,6 +8,7 @@ from mujoco_demo.shared.contracts import PickPlaceTask
 
 
 COMMAND_TOPIC = "/mujoco_demo/task_command"
+ACTION_NAME = "/mujoco_demo/pick_place"
 EVENT_TOPIC = "/mujoco_demo/task_event"
 CANCEL_TOPIC = "/mujoco_demo/task_cancel"
 JOINT_STATE_TOPIC = "/mujoco_demo/joint_states"

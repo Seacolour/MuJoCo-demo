@@ -12,3 +12,6 @@ MUJOCO_LOG.TXT
 artifacts/
 .playwright-cli/
 output/
+ros2/build/
+ros2/install/
+ros2/log/

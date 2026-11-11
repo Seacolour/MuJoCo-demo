@@ -12,11 +12,18 @@ smoke-plan = "python smoke_plan.py"
 bridge = "python bridge_node.py"
 agent = "python agent_client.py"
 platform = "python control_platform.py"
+build-interfaces = "cmd /c build_interfaces.cmd"
+bridge-action = "cmd /c run_with_interfaces.cmd python bridge_node.py --multi --viewer --action"
+platform-action = "cmd /c run_with_interfaces.cmd python control_platform.py --action"
+smoke-action = "cmd /c run_with_interfaces.cmd python smoke_action.py"
+smoke-action-process = "cmd /c run_with_interfaces.cmd python smoke_action_process.py"
 
 [dependencies]
 python = "3.12.*"
 ros-jazzy-ros-base = ">=0.11.0,<0.12"
 ros-jazzy-xacro = ">=2.1.1,<3"
+ros-jazzy-rosidl-default-generators = ">=1.6.1,<2"
+colcon-common-extensions = ">=0.3.0,<0.4"
 
 [pypi-dependencies]
 mujoco-demo = { path = "..", editable = true }

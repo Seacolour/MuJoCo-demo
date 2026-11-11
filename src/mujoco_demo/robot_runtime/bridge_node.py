@@ -1,4 +1,4 @@
-"""Expose the MuJoCo pick-and-place executor through ROS 2 topics."""
+"""Expose the MuJoCo pick-and-place executor through ROS 2 Topics or Action."""
 
 from dataclasses import asdict
 import argparse
@@ -9,6 +9,9 @@ import time
 
 import mujoco.viewer
 import rclpy
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
@@ -16,6 +19,7 @@ from std_msgs.msg import String
 
 from mujoco_demo.robot_runtime.pick_place import MULTI_SCENE_PATH, PhaseReport, PickPlaceSimulation
 from mujoco_demo.shared.ros_contracts import (
+    ACTION_NAME,
     CANCEL_TOPIC,
     COMMAND_TOPIC,
     EVENT_TOPIC,
@@ -28,7 +32,8 @@ from mujoco_demo.shared.ros_contracts import (
 
 
 class MuJoCoBridge(Node):
-    def __init__(self, *, show_viewer: bool = False, multi_scene: bool = False) -> None:
+    def __init__(self, *, show_viewer: bool = False, multi_scene: bool = False,
+                 enable_action: bool = False) -> None:
         super().__init__("mujoco_pick_place_bridge")
         self.show_viewer = show_viewer
         self.simulation = PickPlaceSimulation(scene_path=MULTI_SCENE_PATH) if multi_scene else None
@@ -50,6 +55,17 @@ class MuJoCoBridge(Node):
         self._seen_ids: set[str] = set()
         self._worker: threading.Thread | None = None
         self.completed_at: float | None = None
+        self._action_server = None
+        if enable_action:
+            from mujoco_demo_interfaces.action import PickPlace
+
+            self._action_server = ActionServer(
+                self, PickPlace, ACTION_NAME,
+                execute_callback=self._execute_action,
+                goal_callback=self._on_action_goal,
+                cancel_callback=self._on_action_cancel,
+                callback_group=ReentrantCallbackGroup(),
+            )
         self._publish_scene()
 
     def _publish_scene(self) -> None:
@@ -118,6 +134,81 @@ class MuJoCoBridge(Node):
                     status = "rejected"
         self._publish(TaskEvent(request_id=cancel.request_id, status=status))
 
+    def _on_action_goal(self, goal) -> GoalResponse:
+        with self._lock:
+            if (not goal.request_id or goal.request_id in self._seen_ids
+                    or self._active_id is not None
+                    or goal.expected_scene_revision != self.scene_revision):
+                return GoalResponse.REJECT
+            self._active_id = goal.request_id
+            self._active_cancel = threading.Event()
+            self._seen_ids.add(goal.request_id)
+        return GoalResponse.ACCEPT
+
+    def _on_action_cancel(self, goal_handle) -> CancelResponse:
+        with self._lock:
+            if (goal_handle.request.request_id != self._active_id
+                    or self._active_cancel is None):
+                return CancelResponse.REJECT
+            self._active_cancel.set()
+        return CancelResponse.ACCEPT
+
+    def _execute_action(self, goal_handle):
+        from mujoco_demo_interfaces.action import PickPlace
+
+        goal = goal_handle.request
+        response = PickPlace.Result()
+        cancel = self._active_cancel
+        assert cancel is not None
+
+        def report_phase(phase: PhaseReport) -> None:
+            feedback = PickPlace.Feedback()
+            feedback.phase = phase.name
+            feedback.joint_positions_rad = list(phase.joint_positions_rad)
+            goal_handle.publish_feedback(feedback)
+            state = JointState()
+            state.header.stamp = self.get_clock().now().to_msg()
+            state.name = [f"joint{i}" for i in range(1, 8)]
+            state.position = list(phase.joint_positions_rad)
+            self._joint_states.publish(state)
+
+        try:
+            simulation = self.simulation or PickPlaceSimulation()
+            simulation.on_phase = report_phase
+            simulation.should_cancel = cancel.is_set
+            start_time = simulation.data.time
+            task = TaskCommand(
+                request_id=goal.request_id,
+                task={"object_name": goal.object_name, "target_name": goal.target_name},
+            ).task
+            result = simulation.run(task)
+            if self.simulation is not None and simulation.data.time > start_time:
+                self.scene_revision += 1
+                self._publish_scene()
+            response.success = result.success
+            response.object_position_m = list(result.cube_final_m)
+            response.message = result.failure_reason or ""
+            if result.cancelled:
+                response.error_code = "CANCELLED"
+                goal_handle.canceled()
+            elif result.success:
+                goal_handle.succeed()
+            else:
+                response.error_code = "EXECUTION_FAILED"
+                goal_handle.abort()
+        except ValueError as exc:
+            response.error_code = "INVALID_GOAL"
+            response.message = str(exc)
+            goal_handle.abort()
+        except Exception as exc:
+            response.error_code = "EXECUTION_FAILED"
+            response.message = str(exc)
+            goal_handle.abort()
+        finally:
+            response.scene_revision = self.scene_revision
+            self._release_active()
+        return response
+
     def _execute(self, command: TaskCommand, cancel: threading.Event) -> None:
         def report_phase(phase: PhaseReport) -> None:
             self._publish(TaskEvent(request_id=command.request_id, status="phase", phase=phase.name))
@@ -168,14 +259,17 @@ class MuJoCoBridge(Node):
         except Exception as exc:
             self._publish(TaskEvent(request_id=command.request_id, status="failed", message=str(exc)))
         finally:
-            with self._lock:
-                self.completed_at = time.monotonic()
-                next_command = self._queue.popleft() if self._queue else None
-                self._active_id = next_command.request_id if next_command else None
-                self._active_cancel = threading.Event() if next_command else None
-            if next_command is not None:
-                self._publish(TaskEvent(request_id=next_command.request_id, status="accepted"))
-                self._start_worker(next_command)
+            self._release_active()
+
+    def _release_active(self) -> None:
+        with self._lock:
+            self.completed_at = time.monotonic()
+            next_command = self._queue.popleft() if self._queue else None
+            self._active_id = next_command.request_id if next_command else None
+            self._active_cancel = threading.Event() if next_command else None
+        if next_command is not None:
+            self._publish(TaskEvent(request_id=next_command.request_id, status="accepted"))
+            self._start_worker(next_command)
 
 
 def main() -> None:
@@ -183,9 +277,13 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="exit after one completed task")
     parser.add_argument("--viewer", action="store_true", help="show one task in the MuJoCo viewer")
     parser.add_argument("--multi", action="store_true", help="keep a two-cube, three-zone scene across tasks")
+    parser.add_argument("--action", action="store_true", help="enable the PickPlace Action server")
     args = parser.parse_args()
     rclpy.init()
-    node = MuJoCoBridge(show_viewer=args.viewer, multi_scene=args.multi)
+    node = MuJoCoBridge(show_viewer=args.viewer, multi_scene=args.multi,
+                        enable_action=args.action)
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
         if args.multi and args.viewer:
             assert node.simulation is not None
@@ -197,7 +295,7 @@ def main() -> None:
                 viewer.cam.elevation = -25
                 viewer.sync()
                 while rclpy.ok() and viewer.is_running():
-                    rclpy.spin_once(node, timeout_sec=0.05)
+                    executor.spin_once(timeout_sec=0.05)
                     if node._active_id is None:
                         viewer.sync()
                     if (args.once and node.completed_at is not None and node._active_id is None
@@ -205,7 +303,7 @@ def main() -> None:
                         break
         else:
             while rclpy.ok():
-                rclpy.spin_once(node, timeout_sec=0.1)
+                executor.spin_once(timeout_sec=0.1)
                 if ((args.once or args.viewer) and node.completed_at is not None and node._active_id is None
                         and time.monotonic() - node.completed_at > 1):
                     break
@@ -216,6 +314,9 @@ def main() -> None:
             node._active_cancel.set()
         if node._worker is not None:
             node._worker.join(timeout=5)
+        executor.shutdown()
+        if node._action_server is not None:
+            node._action_server.destroy()
         node.destroy_node()
         rclpy.shutdown()
 

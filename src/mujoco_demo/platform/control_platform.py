@@ -1,7 +1,9 @@
 """Local HTTP control platform for the persistent MuJoCo ROS 2 bridge."""
 
 from contextlib import asynccontextmanager
+import argparse
 import json
+import os
 from pathlib import Path
 from queue import Empty, Queue
 import threading
@@ -31,8 +33,8 @@ class InstructionRequest(BaseModel):
 
 
 class AgentControlPlatform:
-    def __init__(self) -> None:
-        self._ros = RosSkillClient(self._on_event, self._on_scene)
+    def __init__(self, *, use_action: bool = False) -> None:
+        self._ros = RosSkillClient(self._on_event, self._on_scene, use_action=use_action)
         self._lock = threading.RLock()
         self._tasks: dict[str, dict[str, object]] = {}
         self._order: list[str] = []
@@ -211,7 +213,7 @@ class AgentControlPlatform:
                 request_id, status="executing", current_step=index,
                 parsed_task=step.model_dump(), phase=None,
             )
-            self._ros.send_task(child_id, step)
+            self._ros.send_task(child_id, step, int(scene.get("revision", 0)))
             if not self._step_done.wait(timeout=90):
                 self._ros.cancel_task(child_id)
                 with self._lock:
@@ -271,7 +273,8 @@ class AgentControlPlatform:
             if self._task_snapshot(request_id)["status"] != "cancel_requested":
                 self._set_task(request_id, phase=event.phase)
         elif event.status == "accepted":
-            self._set_task(request_id, status="executing")
+            if self._task_snapshot(request_id)["status"] != "cancel_requested":
+                self._set_task(request_id, status="executing")
         elif event.status == "queued":
             self._set_task(request_id, status="queued")
         else:
@@ -315,7 +318,7 @@ class AgentControlPlatform:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     rclpy.init()
-    platform = AgentControlPlatform()
+    platform = AgentControlPlatform(use_action=os.getenv("MUJOCO_SKILL_TRANSPORT") == "action")
     app.state.platform = platform
     platform.start()
     try:
@@ -396,6 +399,11 @@ def events(request: Request) -> StreamingResponse:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Agent control platform")
+    parser.add_argument("--action", action="store_true", help="use the PickPlace Action client")
+    args = parser.parse_args()
+    if args.action:
+        os.environ["MUJOCO_SKILL_TRANSPORT"] = "action"
     uvicorn.run(app, host="127.0.0.1", port=8765)
 
 

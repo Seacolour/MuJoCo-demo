@@ -1,0 +1,16 @@
+# Goal: one high-level robot skill call against a known scene revision.
+string request_id
+string object_name
+string target_name
+uint64 expected_scene_revision
+---
+# Result: physical verification and resulting scene revision.
+bool success
+string error_code
+string message
+float64[3] object_position_m
+uint64 scene_revision
+---
+# Feedback: current deterministic motion phase.
+string phase
+float64[7] joint_positions_rad
