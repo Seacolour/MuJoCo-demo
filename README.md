@@ -4,7 +4,8 @@
 
 ## 演示视频
 
-<video src="https://github.com/user-attachments/assets/ef873f4c-f0a4-46f8-955f-243c3c0cffc0"></video>
+[<video src="https://github.com/user-attachments/assets/ef873f4c-f0a4-46f8-955f-243c3c0cffc0"></video>
+](https://github.com/user-attachments/assets/ef873f4c-f0a4-46f8-955f-243c3c0cffc0)
 
 [下载 MP4 备用文件](media/xarm7-agent-demo.mp4)（102 秒，7.3 MiB，无音轨）
 
