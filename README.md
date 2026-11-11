@@ -18,13 +18,17 @@
 - 取消或物理执行失败时，MuJoCo 恢复该单步任务开始前的仿真状态，已完成的先前任务保留；后续指令仍可执行。这是仿真回滚机制，不代表真机能撤销物理动作。
 - 浏览器遥控台显示连接状态、物体与区域、自然语言输入、任务队列、执行阶段、拒绝原因和取消操作。
 
-机械臂模型来自 MuJoCo Menagerie 的 [xArm7](https://github.com/google-deepmind/mujoco_menagerie/tree/main/ufactory_xarm7)，保留原模型的 BSD-3-Clause 许可证。
+项目代码采用 [MIT 许可证](LICENSE)。机械臂模型来自 MuJoCo Menagerie 的 [xArm7](https://github.com/google-deepmind/mujoco_menagerie/tree/main/ufactory_xarm7)，保留其独立的 [BSD-3-Clause 许可证](model/ufactory_xarm7/LICENSE)。
 
 ## 启动浏览器遥控台与 MuJoCo Viewer
 
-先在项目根目录执行 `pixi install`。项目根目录的 `.env` 或进程环境需提供 `DEEPSEEK_API_KEY`；该文件已被 Git 忽略。Action 接口首次运行前需在 Windows 上安装 Visual Studio C++ Build Tools，并执行：
+环境为 Windows 11、Pixi、Visual Studio C++ Build Tools。先在项目根目录安装两个 Pixi 环境，复制配置模板并在本机 `.env` 中填写 `DEEPSEEK_API_KEY`；密钥文件已被 Git 忽略：
 
 ```powershell
+pixi install
+pixi install --manifest-path ros2/pixi.toml
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# 编辑 .env，填写 DEEPSEEK_API_KEY；可调整 DEEPSEEK_MODEL
 pixi run --manifest-path ros2/pixi.toml build-interfaces
 ```
 
@@ -39,6 +43,8 @@ pixi run --manifest-path ros2/pixi.toml platform-action
 ```
 
 浏览器访问 `http://127.0.0.1:8765`。可以依次发送两条单任务，也可以一次输入“先把绿色方块放到红色区域，然后把红色方块放到绿色区域”。后一步会读取前一步完成后的场景；若后续步骤的目标被占用，整条计划会在机械臂动作前被拒绝。关闭两个终端即可停止服务。
+
+只想验证物理仿真和 ROS 2 Action 时，可直接运行下方测试与 `smoke-action`；这些检查使用固定任务，不需要 DeepSeek API Key。浏览器自然语言指令才需要密钥。
 
 ## 代码模块
 
