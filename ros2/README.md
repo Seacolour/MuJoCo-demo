@@ -14,7 +14,7 @@ pixi run --manifest-path ros2/pixi.toml python ros2/bridge_node.py
 pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py --offline
 ```
 
-The primary demo now uses `mujoco_demo_interfaces/action/PickPlace`. From the project root, build the interface with `pixi run --manifest-path ros2/pixi.toml build-interfaces` (Visual Studio C++ Build Tools are required on Windows); rebuild after editing the `.action` file. Run `bridge-action` and `platform-action` in separate terminals. The generated interface is loaded through `run_with_interfaces.cmd`; plain Python commands do not source it.
+The primary demo now uses `mujoco_demo_interfaces/action/PickPlace`. From the project root, build the interface with `pixi run --manifest-path ros2/pixi.toml build-interfaces` (Visual Studio C++ Build Tools are required on Windows). Stop running bridge/platform processes before rebuilding after an `.action` edit, because Windows locks the generated DLLs. Run `bridge-action` and `platform-action` in separate terminals. The generated interface is loaded through `run_with_interfaces.cmd`; plain Python commands do not source it.
 
 The older Topic path remains available for comparison: the bridge accepts JSON on `/mujoco_demo/task_command` and `/mujoco_demo/task_cancel`, publishes events on `/mujoco_demo/task_event`, and queues up to eight requests. The Action server accepts one Goal at a time and rejects stale scene revisions and duplicate request IDs. Both modes publish scene snapshots and `sensor_msgs/JointState`.
 
@@ -32,6 +32,6 @@ Smoke scripts select a separate `ROS_DOMAIN_ID` so they do not interact with a r
 
 The MuJoCo runtime restores the state from the start of a cancelled or failed step before returning its result. This simulation-only rollback keeps later commands executable; a physical robot would require a separate recovery procedure.
 
-Successful pick-and-place goals now retreat and return to the startup keyframe Home Pose. The final `return_home` phase is sent as Action feedback and shown in the browser.
+Standalone pick-and-place goals retreat and return to the startup keyframe Home Pose. In a parent task, the platform marks intermediate goals with `continue_sequence=true`: they retreat but skip Home; only the final goal reports `return_home` feedback.
 
 Use `pixi run --manifest-path ros2/pixi.toml python ros2/agent_client.py "把红色方块放到绿色目标区"` instead of `--offline` to parse the instruction with DeepSeek. The agent reads `DEEPSEEK_API_KEY` from the process environment or the project root `.env` file.

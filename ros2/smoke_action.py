@@ -79,12 +79,15 @@ def main() -> None:
             assert completed["status"] == "succeeded", completed
             assert len(completed["result"]["steps"]) == 2
             assert any(event["phase"] == "approach" for event in completed["events"])
-            assert any(event["phase"] == "return_home" for event in completed["events"])
+            assert [event["step_index"] for event in completed["events"]
+                    if event["phase"] == "return_home"] == [2]
             assert bridge.scene_revision == 2
 
             exchanged = wait_for_task(platform, platform.submit("swap")["request_id"])
             assert exchanged["status"] == "succeeded", exchanged
             assert len(exchanged["result"]["steps"]) == 3
+            assert [event["step_index"] for event in exchanged["events"]
+                    if event["phase"] == "return_home"] == [3]
             assert bridge.scene_revision == 5
             scene = bridge.simulation.catalog.snapshot(bridge.simulation.data)
             assert scene["zones"]["red_zone"]["occupied_by"] == "red_cube"
@@ -102,7 +105,7 @@ def main() -> None:
             resume_motion = threading.Event()
             original_run = bridge.simulation.run
 
-            def pause_after_grasp(task: PickPlaceTask):
+            def pause_after_grasp(task: PickPlaceTask, *, return_home: bool = True):
                 report_phase = bridge.simulation.on_phase
 
                 def report_and_pause(phase) -> None:
@@ -113,7 +116,7 @@ def main() -> None:
                             raise TimeoutError("test did not release the grasp checkpoint")
 
                 bridge.simulation.on_phase = report_and_pause
-                return original_run(task)
+                return original_run(task, return_home=return_home)
 
             with patch.object(bridge.simulation, "run", side_effect=pause_after_grasp):
                 cancel_id = platform.submit("cancel")["request_id"]

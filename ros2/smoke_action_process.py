@@ -37,7 +37,10 @@ def main() -> None:
         goal.object_name = "red_cube"
         goal.target_name = "blue_zone"
         goal.expected_scene_revision = 0
-        accepted = client.send_goal_async(goal)
+        phases: list[str] = []
+        accepted = client.send_goal_async(
+            goal, feedback_callback=lambda message: phases.append(message.feedback.phase),
+        )
         rclpy.spin_until_future_complete(node, accepted, timeout_sec=10)
         assert accepted.done() and accepted.result().accepted
         result_future = accepted.result().get_result_async()
@@ -47,6 +50,7 @@ def main() -> None:
         assert outcome.status == GoalStatus.STATUS_SUCCEEDED, outcome.status
         assert outcome.result.success
         assert outcome.result.scene_revision == 1
+        assert phases[-1] == "return_home"
         print("ROS 2 PickPlace Action across processes OK")
     finally:
         client.destroy()

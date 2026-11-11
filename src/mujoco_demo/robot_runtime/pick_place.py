@@ -173,7 +173,7 @@ class PickPlaceSimulation:
                 contacts.add(name)
         return len(contacts)
 
-    def run(self, task: PickPlaceTask) -> PickPlaceResult:
+    def run(self, task: PickPlaceTask, *, return_home: bool = True) -> PickPlaceResult:
         object_info, zone_info = self.catalog.validate(self.data, task)
         # A simulated task is committed only after physical verification. Rewind
         # its partial motion on cancel/failure so later tasks start from a stable state.
@@ -259,8 +259,9 @@ class PickPlaceSimulation:
             error = self.move_tcp(np.array([*place_xy, above_z]))
             self.step_for(0.5)
             record("retreat", error)
-            self.move_home()
-            record("return_home")
+            if return_home:
+                self.move_home()
+                record("return_home")
             horizontal_error = np.abs(cube.xpos[:2] - place_xy)
             allowed_error = zone_info.half_size_m[:2] - object_info.half_size_m[:2] + 0.01
             expected_height = target_position[2] + object_info.half_size_m[2]

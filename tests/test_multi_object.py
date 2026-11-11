@@ -52,6 +52,27 @@ def test_two_tasks_share_scene_state_and_occupied_zone_is_rejected() -> None:
         simulation.run(PickPlaceTask(object_name="green_cube", target_name="blue_zone"))
 
 
+def test_compound_task_returns_home_only_after_its_last_move() -> None:
+    simulation = PickPlaceSimulation(scene_path=MULTI_SCENE_PATH)
+
+    first = simulation.run(
+        PickPlaceTask(object_name="red_cube", target_name="blue_zone"),
+        return_home=False,
+    )
+    assert first.success, first.failure_reason
+    assert first.phases[-1].name == "retreat"
+    assert not any(phase.name == "return_home" for phase in first.phases)
+
+    second = simulation.run(PickPlaceTask(object_name="green_cube", target_name="red_zone"))
+    assert second.success, second.failure_reason
+    assert second.phases[-1].name == "return_home"
+    np.testing.assert_allclose(
+        simulation.data.qpos[simulation.qpos_ids],
+        simulation.home_pose.joint_positions_rad,
+        atol=0.05,
+    )
+
+
 def test_unknown_object_is_rejected_before_motion() -> None:
     simulation = PickPlaceSimulation(scene_path=MULTI_SCENE_PATH)
     start_time = simulation.data.time

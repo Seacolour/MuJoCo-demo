@@ -56,9 +56,11 @@ class RosSkillClient(Node):
         return self._command_publisher.get_subscription_count() > 0
 
     def send_task(self, request_id: str, task: PickPlaceTask,
-                  scene_revision: int = 0) -> None:
+                  scene_revision: int = 0, *, continue_sequence: bool = False) -> None:
         if not self._use_action:
-            command = TaskCommand(request_id=request_id, task=task)
+            command = TaskCommand(
+                request_id=request_id, task=task, continue_sequence=continue_sequence,
+            )
             self._command_publisher.publish(String(data=command.model_dump_json()))
             return
         goal = self._action_type.Goal()
@@ -66,6 +68,7 @@ class RosSkillClient(Node):
         goal.object_name = task.object_name
         goal.target_name = task.target_name
         goal.expected_scene_revision = scene_revision
+        goal.continue_sequence = continue_sequence
         future = self._action_client.send_goal_async(
             goal, feedback_callback=lambda feedback: self._on_action_feedback(request_id, feedback)
         )

@@ -181,7 +181,7 @@ class MuJoCoBridge(Node):
                 request_id=goal.request_id,
                 task={"object_name": goal.object_name, "target_name": goal.target_name},
             ).task
-            result = simulation.run(task)
+            result = simulation.run(task, return_home=not goal.continue_sequence)
             if self.simulation is not None and simulation.data.time > start_time:
                 self.scene_revision += 1
                 self._publish_scene()
@@ -225,7 +225,9 @@ class MuJoCoBridge(Node):
 
             def run_and_publish() -> None:
                 start_time = simulation.data.time
-                result = simulation.run(command.task)
+                result = simulation.run(
+                    command.task, return_home=not command.continue_sequence,
+                )
                 if self.simulation is not None and simulation.data.time > start_time:
                     self.scene_revision += 1
                     self._publish_scene()

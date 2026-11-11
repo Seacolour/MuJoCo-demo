@@ -213,7 +213,10 @@ class AgentControlPlatform:
                 request_id, status="executing", current_step=index,
                 parsed_task=step.model_dump(), phase=None,
             )
-            self._ros.send_task(child_id, step, int(scene.get("revision", 0)))
+            self._ros.send_task(
+                child_id, step, int(scene.get("revision", 0)),
+                continue_sequence=index < len(plan.steps),
+            )
             if not self._step_done.wait(timeout=90):
                 self._ros.cancel_task(child_id)
                 with self._lock:

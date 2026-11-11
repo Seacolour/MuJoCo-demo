@@ -20,6 +20,7 @@ class TaskCommand(BaseModel):
 
     request_id: str = Field(min_length=1)
     task: PickPlaceTask
+    continue_sequence: bool = False
 
 
 class TaskCancel(BaseModel):

@@ -63,12 +63,16 @@ def main() -> None:
             assert completed["status"] == "succeeded", completed
             assert completed["total_steps"] == 2
             assert len(completed["result"]["steps"]) == 2
+            assert [event["step_index"] for event in completed["events"]
+                    if event["phase"] == "return_home"] == [2]
             assert bridge.scene_revision == 2
 
             exchanged = wait_for_task(platform, bridge, platform.submit("swap")["request_id"])
             assert exchanged["status"] == "succeeded", exchanged
             assert exchanged["total_steps"] == 3
             assert len(exchanged["result"]["steps"]) == 3
+            assert [event["step_index"] for event in exchanged["events"]
+                    if event["phase"] == "return_home"] == [3]
             assert bridge.scene_revision == 5
             scene = bridge.simulation.catalog.snapshot(bridge.simulation.data)
             assert scene["zones"]["red_zone"]["occupied_by"] == "red_cube"

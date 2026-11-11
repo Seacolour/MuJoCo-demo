@@ -3,6 +3,8 @@ string request_id
 string object_name
 string target_name
 uint64 expected_scene_revision
+# True when another step in the same parent task follows; keep the arm retreated.
+bool continue_sequence
 ---
 # Result: physical verification and resulting scene revision.
 bool success

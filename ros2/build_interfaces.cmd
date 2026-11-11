@@ -12,5 +12,11 @@ if not defined VSINSTALL (
 )
 call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b 1
-colcon --log-base log build --base-paths mujoco_demo_interfaces --packages-select mujoco_demo_interfaces --build-base build --install-base install --merge-install
+set "ROS_BUILD_BASE=build"
+set "ROS_INSTALL_BASE=install"
+set "ROS_LOG_BASE=log"
+if defined MUJOCO_DEMO_INTERFACES_BUILD_BASE set "ROS_BUILD_BASE=%MUJOCO_DEMO_INTERFACES_BUILD_BASE%"
+if defined MUJOCO_DEMO_INTERFACES_PREFIX set "ROS_INSTALL_BASE=%MUJOCO_DEMO_INTERFACES_PREFIX%"
+if defined MUJOCO_DEMO_INTERFACES_LOG_BASE set "ROS_LOG_BASE=%MUJOCO_DEMO_INTERFACES_LOG_BASE%"
+colcon --log-base "%ROS_LOG_BASE%" build --base-paths mujoco_demo_interfaces --packages-select mujoco_demo_interfaces --build-base "%ROS_BUILD_BASE%" --install-base "%ROS_INSTALL_BASE%" --merge-install
 exit /b %errorlevel%
