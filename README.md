@@ -2,11 +2,15 @@
 
 在 Windows 11 上用自然语言持续控制仿真机械臂。浏览器遥控台负责下达指令和展示状态；独立的 MuJoCo Viewer 持续显示 xArm7 在同一场景中的动作。DeepSeek 将指令解析为有序的高层任务计划，ROS 2 Jazzy 传递每一步命令、阶段事件和场景状态，MuJoCo 负责物理执行与结果验证。
 
+## 演示视频
+
+<video src="https://github.com/user-attachments/assets/ef873f4c-f0a4-46f8-955f-243c3c0cffc0"></video>
+
+[下载 MP4 备用文件](media/xarm7-agent-demo.mp4)（102 秒，7.3 MiB，无音轨）
+
 ![浏览器遥控台展示两条已完成任务及场景占用](media/control-platform.png)
 ![初始场景：红绿方块与三个目标区](media/multi-initial.png)
 ![连续任务后：红方块在蓝区，绿方块在红区](media/multi-final.png)
-
-[▶ 观看完整演示视频](media/xarm7-agent-demo.mp4)（102 秒，7.3 MiB，无音轨）
 
 ## 已验证的能力
 
